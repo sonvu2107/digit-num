@@ -22,7 +22,7 @@ def deskew(img):
     """Giảm lệch (deskew) ảnh nhị phân 2D
 
     Tham số:
-    - img: ảnh nhị phân (0 hoặc 255), chuẩ n là chữ trắng trên nền đen
+    - img: ảnh nhị phân (0 hoặc 255), chuẩn là chữ trắng trên nền đen
     Trả về ảnh đã áp deskew để chữ thẳng đứng hơn trước khi resize.
     """
 
@@ -39,10 +39,15 @@ def deskew(img):
     )
 
 
+# === THAM SỐ TIỀN XỬ LÝ (điều chỉnh dựa trên phân tích dataset) ===
+# Dataset có nét mảnh (median ~0.6px), digit chiếm gần hết 28x28
+BLUR_KERNEL = (3, 3)    # Kernel nhỏ để giữ chi tiết nét mảnh (trước: 5x5)
+RESIZE_TARGET = 22      # Kích thước digit sau resize, trước khi pad về 28x28 (trước: 20)
+
 def preprocess_digit_from_bgr(img_bgr):
     # 1. BGR -> GRAY
     gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
-    gray = cv2.GaussianBlur(gray, (5,5), 0)
+    gray = cv2.GaussianBlur(gray, BLUR_KERNEL, 0)
 
     # 2. Nhị phân: chữ TRẮNG, nền ĐEN (phù hợp canvas)
     _, th = cv2.threshold(
@@ -59,19 +64,20 @@ def preprocess_digit_from_bgr(img_bgr):
 
     cnt = max(contours, key=cv2.contourArea)
     x, y, w, h = cv2.boundingRect(cnt)
-    digit = th[y:y+h, x:x+w]   # chữ trắng, nền đen
+    # chữ trắng, nền đen
+    digit = th[y:y+h, x:x+w]   
 
     # 4. Deskew
     digit = deskew(digit)
 
-    # 5. Resize + pad về 28x28
+    # 5. Resize + pad về 28x28 (digit chiếm RESIZE_TARGET pixel)
     h, w = digit.shape
     if h > w:
-        new_h = 20
-        new_w = int(w * (20.0 / h))
+        new_h = RESIZE_TARGET
+        new_w = max(1, int(w * (RESIZE_TARGET / h)))
     else:
-        new_w = 20
-        new_h = int(h * (20.0 / w))
+        new_w = RESIZE_TARGET
+        new_h = max(1, int(h * (RESIZE_TARGET / w)))
 
     digit_resized = cv2.resize(digit, (new_w, new_h),
                                interpolation=cv2.INTER_AREA)

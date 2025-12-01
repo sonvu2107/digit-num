@@ -22,7 +22,8 @@ from infer import predict_with_svm, predict_with_mlp
 
 CANVAS_SIZE = 280   # kích thước canvas hiển thị (pixel)
 # Độ dày nét vẽ khi vẽ trên canvas lớn. Khi resize về 28x28 sẽ suy giảm xuống ~1-2px.
-LINE_WIDTH = 18   # khuyến nghị: 12-18. KHÔNG đặt < 8.
+# Dataset có nét mảnh (median ~0.6px), nên LINE_WIDTH 15 cho ra ~1.5px sau resize
+LINE_WIDTH = 15   # khuyến nghị: 12-18. KHÔNG đặt < 10.
 
 
 class DigitApp:

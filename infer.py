@@ -21,6 +21,14 @@ from preprocess import preprocess_digit_from_bgr
 svm_model = joblib_load("models/svm_hog.joblib")    # HOG + SVM
 mlp_model = joblib_load("models/mlp_digit.joblib")  # MLP (pixel)
 
+# === THAM SỐ HOG (cần khớp với model đã train) ===
+# Nếu thay đổi các tham số này, cần train lại model SVM
+HOG_ORIENTATIONS = 9          # số hướng gradient
+HOG_PIXELS_PER_CELL = (4, 4)  # kích thước mỗi cell (pixel)
+HOG_CELLS_PER_BLOCK = (2, 2)  # số cell trong mỗi block
+HOG_BLOCK_NORM = 'L2-Hys'     # chuẩn hoá block
+
+
 def hog_features_single(img_28):
     """Tạo HOG feature từ ảnh 28x28 chuẩn.
 
@@ -28,14 +36,16 @@ def hog_features_single(img_28):
     - img_28: ảnh 28x28 float32 trong [0,1], chữ đen nền trắng
     Trả về:
     - feature 1-d vector dạng (1, N) phù hợp input cho SVM.
+    
+    Lưu ý: Các tham số HOG phải khớp với tham số đã dùng khi train model.
     """
     img = (img_28 * 255).astype("uint8")
     feat = hog(
         img,
-        orientations=9,
-        pixels_per_cell=(4, 4),
-        cells_per_block=(2, 2),
-        block_norm='L2-Hys'
+        orientations=HOG_ORIENTATIONS,
+        pixels_per_cell=HOG_PIXELS_PER_CELL,
+        cells_per_block=HOG_CELLS_PER_BLOCK,
+        block_norm=HOG_BLOCK_NORM
     )
     return feat.reshape(1, -1)
 

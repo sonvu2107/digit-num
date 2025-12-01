@@ -92,5 +92,3 @@ License & nguồn
 - Đây là một dự án demo/nội bộ, không có license cụ thể.
 
 ---
-
-Cần mình thêm phần tự động lưu ảnh debug, hoặc script so sánh hàng loạt ảnh GUI vs dataset không? Gọi mình biết yêu cầu cụ thể.
