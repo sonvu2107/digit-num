@@ -33,7 +33,6 @@ def main():
 
     print("=== TRAIN SVM (RBF) ===")
     clf = svm.SVC(kernel='rbf', gamma='scale')
-    
     clf.fit(X_train_hog, y_train)
 
     print("=== EVALUATE ===")
