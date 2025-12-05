@@ -21,9 +21,9 @@ from infer import predict_with_svm, predict_with_mlp
 
 
 CANVAS_SIZE = 280   # kích thước canvas hiển thị (pixel)
-# Độ dày nét vẽ khi vẽ trên canvas lớn. Khi resize về 28x28 sẽ suy giảm xuống ~1-2px.
-# Dataset có nét mảnh (median ~0.6px), nên LINE_WIDTH 15 cho ra ~1.5px sau resize
-LINE_WIDTH = 15   # khuyến nghị: 12-18. KHÔNG đặt < 10.
+# Độ dày nét vẽ khi vẽ trên canvas lớn. 
+# Dataset có khoảng 100-140 black pixels, cần LINE_WIDTH đủ dày
+LINE_WIDTH = 22   # Tăng lên 22 để có đủ pixel đen như dataset
 
 
 class DigitApp:
@@ -98,33 +98,55 @@ class DigitApp:
         self.label_mlp.config(text="MLP: ...")
 
     def on_predict(self):
+        # Hiển thị "Thinking..." trong khi xử lý
+        self.label_svm.config(text="SVM: Thinking...")
+        self.label_mlp.config(text="MLP: Thinking...")
+        self.root.update()  # Force update GUI
+        
+        # Delay nhẹ để user thấy hiệu ứng thinking
+        self.root.after(300, self._do_predict)
+    
+    def _do_predict(self):
+        """Thực hiện dự đoán sau khi hiển thị thinking"""
         # Chuyển ảnh PIL (RGB) -> numpy -> BGR cho OpenCV
         img_rgb = np.array(self.image)
         img_bgr = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR)
 
         # Gọi model SVM
         try:
-            svm_pred = predict_with_svm(img_bgr)
+            svm_pred, svm_probs = predict_with_svm(img_bgr)
         except Exception as e:
             messagebox.showerror("Lỗi", f"Lỗi khi dự đoán bằng SVM:\n{e}")
             return
 
         # Gọi model MLP
         try:
-            mlp_pred, probs = predict_with_mlp(img_bgr)
+            mlp_pred, mlp_probs = predict_with_mlp(img_bgr)
         except Exception as e:
             messagebox.showerror("Lỗi", f"Lỗi khi dự đoán bằng MLP:\n{e}")
             return
 
         if svm_pred is None and mlp_pred is None:
             messagebox.showwarning("Cảnh báo", "Không nhận diện được chữ số (ảnh trống?).")
+            self.label_svm.config(text="SVM: ...")
+            self.label_mlp.config(text="MLP: ...")
             return
 
-        self.label_svm.config(text=f"SVM: {svm_pred if svm_pred is not None else 'N/A'}")
+        # Hiển thị kết quả SVM với confidence
+        if svm_pred is not None:
+            if svm_probs is not None:
+                svm_conf = svm_probs[svm_pred] * 100
+                self.label_svm.config(text=f"SVM: {svm_pred} ({svm_conf:.1f}%)")
+            else:
+                self.label_svm.config(text=f"SVM: {svm_pred}")
+        else:
+            self.label_svm.config(text="SVM: N/A")
+        
+        # Hiển thị kết quả MLP với confidence
         if mlp_pred is not None:
-            if probs is not None:
-                conf = np.max(probs)
-                self.label_mlp.config(text=f"MLP: {mlp_pred} (conf: {conf:.2f})")
+            if mlp_probs is not None:
+                mlp_conf = mlp_probs[mlp_pred] * 100
+                self.label_mlp.config(text=f"MLP: {mlp_pred} ({mlp_conf:.1f}%)")
             else:
                 self.label_mlp.config(text=f"MLP: {mlp_pred}")
         else:

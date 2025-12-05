@@ -21,9 +21,9 @@ from preprocess import preprocess_digit_from_bgr
 svm_model = joblib_load("models/svm_hog.joblib")    # HOG + SVM
 mlp_model = joblib_load("models/mlp_digit.joblib")  # MLP (pixel)
 
-# === THAM SỐ HOG (cần khớp với model đã train) ===
+# === THAM SỐ HOG (PHẢI khớp với train_svm.py) ===
 # Nếu thay đổi các tham số này, cần train lại model SVM
-HOG_ORIENTATIONS = 9          # số hướng gradient
+HOG_ORIENTATIONS = 12         # số hướng gradient (tăng từ 9 để capture nét mảnh)
 HOG_PIXELS_PER_CELL = (4, 4)  # kích thước mỗi cell (pixel)
 HOG_CELLS_PER_BLOCK = (2, 2)  # số cell trong mỗi block
 HOG_BLOCK_NORM = 'L2-Hys'     # chuẩn hoá block
@@ -52,15 +52,29 @@ def hog_features_single(img_28):
 def predict_with_svm(img_bgr):
     """Dự đoán nhãn bằng pipeline HOG -> SVM.
 
-    Trả về `int` label (0-9) hoặc `None` nếu không tìm thấy contour (ảnh trống).
+    Trả về tuple `(pred, probs)`:
+    - pred: int label (0-9) hoặc None nếu ảnh trống
+    - probs: array xác suất [p0, p1, ..., p9] nếu model hỗ trợ, hoặc None
+    
+    Lưu ý: SVM cần train với probability=True để có predict_proba.
+    Nếu không có, probs sẽ là None.
     """
     digit_28 = preprocess_digit_from_bgr(img_bgr)
     if digit_28 is None:
-        return None
+        return None, None
 
     feat = hog_features_single(digit_28)
     pred = int(svm_model.predict(feat)[0])
-    return pred
+    
+    # Lấy probability nếu model hỗ trợ
+    probs = None
+    if hasattr(svm_model, "predict_proba"):
+        try:
+            probs = svm_model.predict_proba(feat)[0]
+        except:
+            pass  # Model không hỗ trợ probability
+    
+    return pred, probs
 
 def predict_with_mlp(img_bgr):
     """Dự đoán nhãn bằng MLP trên pixel 28x28 flattened.
@@ -87,6 +101,7 @@ def predict_with_mlp(img_bgr):
 if __name__ == "__main__":
     # test nhanh
     img = cv2.imread("test.png")  # đổi ảnh test
-    print("SVM:", predict_with_svm(img))
-    mlp_pred, probs = predict_with_mlp(img)
-    print("MLP:", mlp_pred)
+    svm_pred, svm_probs = predict_with_svm(img)
+    print("SVM:", svm_pred, "probs:", svm_probs)
+    mlp_pred, mlp_probs = predict_with_mlp(img)
+    print("MLP:", mlp_pred, "probs:", mlp_probs)

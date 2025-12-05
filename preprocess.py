@@ -12,6 +12,7 @@ Output:
 
 Ghi chú quan trọng:
 - Sử dụng threshold để tìm contour chữ (chữ trắng trên nền đen), crop vùng chữ, deskew, resize về kích thước phù hợp rồi đảo màu và chuẩn hoá.
+- Thêm bước thinning để làm mảnh nét vẽ, khớp với dataset có nét mảnh (0.3-1px)
 """
 
 import cv2
@@ -30,6 +31,7 @@ def deskew(img):
     if abs(m['mu02']) < 1e-2:
         return img.copy()
     skew = m['mu11'] / m['mu02']
+    skew = np.clip(skew, -1.0, 1.0)  # Giới hạn skew để tránh biến dạng quá mức
     h, w = img.shape
     M = np.float32([[1, skew, -0.5 * skew * h],
                     [0,   1,                0]])
@@ -39,10 +41,24 @@ def deskew(img):
     )
 
 
+def thin_stroke(img, iterations=1):
+    """Làm mảnh nét vẽ bằng morphological erosion.
+    
+    Tham số:
+    - img: ảnh nhị phân (chữ trắng 255, nền đen 0)
+    - iterations: số lần erode (1-2 thường đủ)
+    
+    Trả về ảnh đã làm mảnh nét.
+    """
+    kernel = np.ones((2, 2), np.uint8)
+    eroded = cv2.erode(img, kernel, iterations=iterations)
+    return eroded
+
+
 # === THAM SỐ TIỀN XỬ LÝ (điều chỉnh dựa trên phân tích dataset) ===
-# Dataset có nét mảnh (median ~0.6px), digit chiếm gần hết 28x28
-BLUR_KERNEL = (3, 3)    # Kernel nhỏ để giữ chi tiết nét mảnh (trước: 5x5)
-RESIZE_TARGET = 22      # Kích thước digit sau resize, trước khi pad về 28x28 (trước: 20)
+# Dataset là ảnh NHỊ PHÂN (chỉ có 0 và 255), nét khá dày (~100-140 black pixels)
+BLUR_KERNEL = (3, 3)    # Blur nhỏ để giữ chi tiết
+RESIZE_TARGET = 22      # Kích thước digit sau resize
 
 def preprocess_digit_from_bgr(img_bgr):
     # 1. BGR -> GRAY
@@ -64,13 +80,18 @@ def preprocess_digit_from_bgr(img_bgr):
 
     cnt = max(contours, key=cv2.contourArea)
     x, y, w, h = cv2.boundingRect(cnt)
-    # chữ trắng, nền đen
+    
+    # Kiểm tra vùng chữ có đủ lớn không
+    if w < 5 or h < 5:
+        return None
+        
+    # chữ trắng, nền đen - crop sát vùng chữ
     digit = th[y:y+h, x:x+w]   
 
-    # 4. Deskew
+    # 4. Deskew - luôn áp dụng để giống dataset
     digit = deskew(digit)
 
-    # 5. Resize + pad về 28x28 (digit chiếm RESIZE_TARGET pixel)
+    # 5. Resize giữ tỉ lệ
     h, w = digit.shape
     if h > w:
         new_h = RESIZE_TARGET
@@ -79,18 +100,22 @@ def preprocess_digit_from_bgr(img_bgr):
         new_w = RESIZE_TARGET
         new_h = max(1, int(h * (RESIZE_TARGET / w)))
 
+    # Dùng INTER_AREA để resize mượt, sau đó threshold lại
     digit_resized = cv2.resize(digit, (new_w, new_h),
                                interpolation=cv2.INTER_AREA)
+    
+    # Threshold sau resize để đảm bảo nhị phân
+    _, digit_resized = cv2.threshold(digit_resized, 127, 255, cv2.THRESH_BINARY)
 
-    # 6. Canvas nền trắng (255), chữ đen
+    # 6. Canvas nền trắng (255), chữ đen - căn giữa
     canvas = np.full((28, 28), 255, dtype=np.uint8)
     x_off = (28 - new_w) // 2
     y_off = (28 - new_h) // 2
 
-    # chữ trắng -> đen
+    # chữ trắng -> đen (đảo màu)
     digit_final = 255 - digit_resized
     canvas[y_off:y_off+new_h, x_off:x_off+new_w] = digit_final
 
-    # 7. Chuẩn hoá [0,1]
+    # 7. Chuẩn hoá [0,1] - dataset là chữ đen (0) trên nền trắng (255->1.0)
     canvas = canvas.astype("float32") / 255.0
     return canvas
