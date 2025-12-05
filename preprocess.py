@@ -41,18 +41,33 @@ def deskew(img):
     )
 
 
-def thin_stroke(img, iterations=1):
-    """Làm mảnh nét vẽ bằng morphological erosion.
+def thin_stroke(img, target_fill_ratio=0.12):
+    """Làm mảnh nét vẽ bằng morphological erosion cho đến khi đạt fill ratio mục tiêu.
     
     Tham số:
     - img: ảnh nhị phân (chữ trắng 255, nền đen 0)
-    - iterations: số lần erode (1-2 thường đủ)
+    - target_fill_ratio: tỉ lệ điểm đen mục tiêu (dataset ~ 10-15%)
     
     Trả về ảnh đã làm mảnh nét.
     """
-    kernel = np.ones((2, 2), np.uint8)
-    eroded = cv2.erode(img, kernel, iterations=iterations)
-    return eroded
+    kernel = np.ones((3, 3), np.uint8)
+    result = img.copy()
+    
+    for _ in range(5):  # Tối đa 5 lần erode
+        white_pixels = np.sum(result > 128)
+        total = result.shape[0] * result.shape[1]
+        fill_ratio = white_pixels / total
+        
+        if fill_ratio <= target_fill_ratio:
+            break
+        
+        eroded = cv2.erode(result, kernel, iterations=1)
+        # Kiểm tra không bị mất quá nhiều
+        if np.sum(eroded > 128) < 50:
+            break
+        result = eroded
+    
+    return result
 
 
 # === THAM SỐ TIỀN XỬ LÝ (điều chỉnh dựa trên phân tích dataset) ===

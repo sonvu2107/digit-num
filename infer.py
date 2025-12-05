@@ -1,15 +1,17 @@
 """
 infer.py
 
-Hàm wrapper để gọi 2 model đã train sẵn:
+Hàm wrapper để gọi các model đã train sẵn:
+- CNN (PyTorch) - KHUYẾN NGHỊ: Nhanh và chính xác nhất
 - SVM dùng HOG features (file: models/svm_hog.joblib)
 - MLP dùng pixel 28x28 (file: models/mlp_digit.joblib)
 
-Input cho cả 2 hàm dự đoán là ảnh BGR (OpenCV) từ GUI.
+Input cho tất cả hàm dự đoán là ảnh BGR (OpenCV) từ GUI.
 Tiền xử lý được thực hiện bởi `preprocess.preprocess_digit_from_bgr`
 Hàm `preprocess` trả về ảnh 28x28 float32 trong [0,1], chữ MÀU ĐEN (gần 0), nền MÀU TRẮNG (gần 1).
 """
 
+import os
 import numpy as np
 import cv2
 from joblib import load as joblib_load
@@ -17,9 +19,53 @@ from skimage.feature import hog
 
 from preprocess import preprocess_digit_from_bgr
 
-# Load 2 model đã train sẵn từ thư mục `models/`
+# === Load SVM và MLP models ===
 svm_model = joblib_load("models/svm_hog.joblib")    # HOG + SVM
 mlp_model = joblib_load("models/mlp_digit.joblib")  # MLP (pixel)
+
+# === Load CNN model (PyTorch) ===
+cnn_model = None
+try:
+    import torch
+    import torch.nn as nn
+    
+    class DigitCNN(nn.Module):
+        """CNN nhỏ gọn cho nhận diện chữ số 28x28."""
+        def __init__(self):
+            super(DigitCNN, self).__init__()
+            self.conv1 = nn.Conv2d(1, 32, kernel_size=3, padding=1)
+            self.conv2 = nn.Conv2d(32, 64, kernel_size=3, padding=1)
+            self.conv3 = nn.Conv2d(64, 64, kernel_size=3, padding=1)
+            self.pool = nn.MaxPool2d(2, 2)
+            self.dropout1 = nn.Dropout(0.25)
+            self.dropout2 = nn.Dropout(0.5)
+            self.fc1 = nn.Linear(64 * 3 * 3, 128)
+            self.fc2 = nn.Linear(128, 10)
+            self.relu = nn.ReLU()
+        
+        def forward(self, x):
+            x = self.relu(self.conv1(x))
+            x = self.pool(x)
+            x = self.relu(self.conv2(x))
+            x = self.pool(x)
+            x = self.relu(self.conv3(x))
+            x = self.pool(x)
+            x = self.dropout1(x)
+            x = x.view(-1, 64 * 3 * 3)
+            x = self.relu(self.fc1(x))
+            x = self.dropout2(x)
+            x = self.fc2(x)
+            return x
+    
+    if os.path.exists("models/cnn_digit.pth"):
+        cnn_model = DigitCNN()
+        cnn_model.load_state_dict(torch.load("models/cnn_digit.pth", map_location='cpu'))
+        cnn_model.eval()
+        print("[infer] CNN model loaded successfully")
+except ImportError:
+    print("[infer] PyTorch not installed, CNN model unavailable")
+except Exception as e:
+    print(f"[infer] Could not load CNN model: {e}")
 
 # === THAM SỐ HOG (PHẢI khớp với train_svm.py) ===
 # Nếu thay đổi các tham số này, cần train lại model SVM
@@ -97,6 +143,35 @@ def predict_with_mlp(img_bgr):
     pred = int(mlp_model.predict(x_flat)[0])
 
     return pred, probs
+
+
+def predict_with_cnn(img_bgr):
+    """Dự đoán nhãn bằng CNN (PyTorch).
+    
+    Trả về tuple `(pred, probs)`:
+    - pred: int label (0-9) hoặc None nếu ảnh trống hoặc model chưa load
+    - probs: array xác suất [p0, p1, ..., p9]
+    """
+    if cnn_model is None:
+        return None, None
+    
+    digit_28 = preprocess_digit_from_bgr(img_bgr)
+    if digit_28 is None:
+        return None, None
+    
+    import torch
+    import torch.nn.functional as F
+    
+    # Convert to tensor (1, 1, 28, 28)
+    x = torch.from_numpy(digit_28).float().unsqueeze(0).unsqueeze(0)
+    
+    with torch.no_grad():
+        outputs = cnn_model(x)
+        probs = F.softmax(outputs, dim=1).numpy()[0]
+        pred = int(outputs.argmax(dim=1).item())
+    
+    return pred, probs
+
 
 if __name__ == "__main__":
     # test nhanh
