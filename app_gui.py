@@ -3,14 +3,13 @@ app_gui.py - GUI vẽ và nhận diện chữ số viết tay
 
 Giao diện:
     - Canvas 280x280 nền đen để vẽ chữ số bằng chuột
-    - Nút "Nhận diện": gọi 3 model (CNN, SVM, MLP)
+    - Nút "Nhận diện": gọi model CNN
     - Nút "Xoá": xoá canvas
     - Hiển thị kết quả với confidence %
 
 Sử dụng:
     1. Vẽ chữ số (0-9) bằng chuột trái
     2. Bấm "Nhận diện" để xem kết quả
-    3. CNN là model chính xác nhất (hiển thị màu xanh)
 """
 
 import tkinter as tk
@@ -19,7 +18,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 import cv2
 
-from infer import predict_with_svm, predict_with_mlp, predict_with_cnn
+from infer import predict_with_cnn
 
 # === Tham số GUI ===
 CANVAS_SIZE = 280   # Kích thước canvas (10x kích thước ảnh 28x28)
@@ -29,7 +28,7 @@ LINE_WIDTH = 22     # Độ dày nét vẽ (sau resize sẽ ~2px, khớp với d
 class DigitApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Nhận diện chữ số viết tay - CNN & SVM & MLP")
+        self.root.title("Nhận diện chữ số viết tay - CNN")
 
         # Canvas để vẽ
         self.canvas = tk.Canvas(
@@ -39,7 +38,7 @@ class DigitApp:
             bg="black",
             cursor="cross"
         )
-        self.canvas.grid(row=0, column=0, rowspan=5, padx=10, pady=10)
+        self.canvas.grid(row=0, column=0, rowspan=3, padx=10, pady=10)
 
         # Ảnh PIL để lưu nét vẽ (RGB, nền đen, nét trắng)
         self.image = Image.new("RGB", (CANVAS_SIZE, CANVAS_SIZE), "black")
@@ -57,14 +56,8 @@ class DigitApp:
         btn_clear.grid(row=1, column=1, sticky="ew", padx=10, pady=5)
 
         # Label hiển thị kết quả
-        self.label_cnn = tk.Label(root, text="CNN: ...", font=("Arial", 14, "bold"), fg="blue")
-        self.label_cnn.grid(row=2, column=1, sticky="w", padx=10, pady=5)
-        
-        self.label_svm = tk.Label(root, text="SVM: ...", font=("Arial", 14))
-        self.label_svm.grid(row=3, column=1, sticky="w", padx=10, pady=5)
-
-        self.label_mlp = tk.Label(root, text="MLP: ...", font=("Arial", 14))
-        self.label_mlp.grid(row=4, column=1, sticky="w", padx=10, pady=5)
+        self.label_result = tk.Label(root, text="Kết quả: ...", font=("Arial", 16, "bold"), fg="blue")
+        self.label_result.grid(row=2, column=1, sticky="w", padx=10, pady=5)
 
         # Để vẽ mượt
         self.last_x = None
@@ -97,19 +90,15 @@ class DigitApp:
         self.canvas.delete("all")
         self.image = Image.new("RGB", (CANVAS_SIZE, CANVAS_SIZE), "black")
         self.draw = ImageDraw.Draw(self.image)
-        self.label_cnn.config(text="CNN: ...")
-        self.label_svm.config(text="SVM: ...")
-        self.label_mlp.config(text="MLP: ...")
+        self.label_result.config(text="Kết quả: ...")
 
     def on_predict(self):
         # Hiển thị "Thinking..." trong khi xử lý
-        self.label_cnn.config(text="CNN: Thinking...")
-        self.label_svm.config(text="SVM: Thinking...")
-        self.label_mlp.config(text="MLP: Thinking...")
+        self.label_result.config(text="Đang xử lý...")
         self.root.update()  # Force update GUI
         
         # Delay nhẹ để user thấy hiệu ứng thinking
-        self.root.after(300, self._do_predict)
+        self.root.after(100, self._do_predict)
     
     def _do_predict(self):
         """Thực hiện dự đoán sau khi hiển thị thinking"""
@@ -117,63 +106,24 @@ class DigitApp:
         img_rgb = np.array(self.image)
         img_bgr = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR)
 
-        # Gọi model CNN (ưu tiên)
-        cnn_pred, cnn_probs = None, None
+        # Gọi model CNN
         try:
-            cnn_pred, cnn_probs = predict_with_cnn(img_bgr)
+            pred, probs = predict_with_cnn(img_bgr)
         except Exception as e:
-            print(f"CNN error: {e}")
-
-        # Gọi model SVM
-        try:
-            svm_pred, svm_probs = predict_with_svm(img_bgr)
-        except Exception as e:
-            messagebox.showerror("Lỗi", f"Lỗi khi dự đoán bằng SVM:\n{e}")
+            messagebox.showerror("Lỗi", f"Lỗi khi dự đoán:\n{e}")
             return
 
-        # Gọi model MLP
-        try:
-            mlp_pred, mlp_probs = predict_with_mlp(img_bgr)
-        except Exception as e:
-            messagebox.showerror("Lỗi", f"Lỗi khi dự đoán bằng MLP:\n{e}")
-            return
-
-        if cnn_pred is None and svm_pred is None and mlp_pred is None:
+        if pred is None:
             messagebox.showwarning("Cảnh báo", "Không nhận diện được chữ số (ảnh trống?).")
-            self.label_cnn.config(text="CNN: ...")
-            self.label_svm.config(text="SVM: ...")
-            self.label_mlp.config(text="MLP: ...")
+            self.label_result.config(text="Kết quả: ...")
             return
 
-        # Hiển thị kết quả CNN
-        if cnn_pred is not None:
-            if cnn_probs is not None:
-                cnn_conf = cnn_probs[cnn_pred] * 100
-                self.label_cnn.config(text=f"CNN: {cnn_pred} ({cnn_conf:.1f}%)")
-            else:
-                self.label_cnn.config(text=f"CNN: {cnn_pred}")
+        # Hiển thị kết quả
+        if probs is not None:
+            conf = probs[pred] * 100
+            self.label_result.config(text=f"Kết quả: {pred} ({conf:.1f}%)")
         else:
-            self.label_cnn.config(text="CNN: N/A")
-
-        # Hiển thị kết quả SVM với confidence
-        if svm_pred is not None:
-            if svm_probs is not None:
-                svm_conf = svm_probs[svm_pred] * 100
-                self.label_svm.config(text=f"SVM: {svm_pred} ({svm_conf:.1f}%)")
-            else:
-                self.label_svm.config(text=f"SVM: {svm_pred}")
-        else:
-            self.label_svm.config(text="SVM: N/A")
-        
-        # Hiển thị kết quả MLP với confidence
-        if mlp_pred is not None:
-            if mlp_probs is not None:
-                mlp_conf = mlp_probs[mlp_pred] * 100
-                self.label_mlp.config(text=f"MLP: {mlp_pred} ({mlp_conf:.1f}%)")
-            else:
-                self.label_mlp.config(text=f"MLP: {mlp_pred}")
-        else:
-            self.label_mlp.config(text="MLP: N/A")
+            self.label_result.config(text=f"Kết quả: {pred}")
 
 
 if __name__ == "__main__":
