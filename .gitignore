@@ -1,3 +1,7 @@
+# Dataset folders
+dataset-main/
+mnist_png/
+
 # Large model files
 models/svm_hog.joblib
 

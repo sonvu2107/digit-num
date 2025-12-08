@@ -1,30 +1,29 @@
 """
-app_gui.py
+app_gui.py - GUI vẽ và nhận diện chữ số viết tay
 
-Giao diện GUI đơn giản để vẽ chữ số bằng chuột và gọi các bộ dự đoán:
-- CNN (KHUYẾN NGHỊ - nhanh và chính xác nhất)
-- SVM (dùng HOG)
-- MLP (dùng pixel 28x28)
+Giao diện:
+    - Canvas 280x280 nền đen để vẽ chữ số bằng chuột
+    - Nút "Nhận diện": gọi 3 model (CNN, SVM, MLP)
+    - Nút "Xoá": xoá canvas
+    - Hiển thị kết quả với confidence %
 
-Hướng dẫn nhanh:
-- Canvas có nền đen, vẽ bằng màu trắng.
-- `LINE_WIDTH` nên đặt trong khoảng 12-18 (không đặt quá nhỏ <8), vì sau khi crop+resize xuống 28x28 nét sẽ mảnh lại.
+Sử dụng:
+    1. Vẽ chữ số (0-9) bằng chuột trái
+    2. Bấm "Nhận diện" để xem kết quả
+    3. CNN là model chính xác nhất (hiển thị màu xanh)
 """
 
 import tkinter as tk
 from tkinter import messagebox
-
 import numpy as np
-from PIL import Image, ImageDraw, ImageTk
+from PIL import Image, ImageDraw
 import cv2
 
 from infer import predict_with_svm, predict_with_mlp, predict_with_cnn
 
-
-CANVAS_SIZE = 280   # kích thước canvas hiển thị (pixel)
-# Độ dày nét vẽ khi vẽ trên canvas lớn. 
-# Dataset có khoảng 100-140 black pixels, cần LINE_WIDTH đủ dày
-LINE_WIDTH = 22   # Tăng lên 22 để có đủ pixel đen như dataset
+# === Tham số GUI ===
+CANVAS_SIZE = 280   # Kích thước canvas (10x kích thước ảnh 28x28)
+LINE_WIDTH = 22     # Độ dày nét vẽ (sau resize sẽ ~2px, khớp với dataset)
 
 
 class DigitApp:

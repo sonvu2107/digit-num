@@ -1,4 +1,27 @@
+"""
+train_svm.py - Train SVM với HOG features
+
+Hỗ trợ 2 dataset:
+    - dataset-main: 40k train, 10k test
+    - mnist_png: 60k train, 10k test
+
+Sử dụng:
+    python train_svm.py                    # Train với dataset-main
+    python train_svm.py mnist_png          # Train với MNIST
+
+HOG Parameters:
+    - orientations=12: số hướng gradient (30° mỗi bin)
+    - pixels_per_cell=(4,4): cell 4x4 pixels
+    - cells_per_block=(2,2): block 2x2 cells
+    
+SVM: RBF kernel, C=10.0, gamma='scale'
+
+Lưu ý: SVM RBF chậm với dataset lớn (O(n²)), 
+       với MNIST 60k có thể mất 10-30 phút.
+"""
+
 import os
+import sys
 import numpy as np
 from sklearn import svm
 from sklearn.metrics import accuracy_score, confusion_matrix
@@ -9,120 +32,109 @@ import time
 
 from dataset_main import load_dataset_from_folder
 
-# === THAM SỐ HOG (điều chỉnh dựa trên phân tích dataset) ===
-# Dataset có nét mảnh (median ~0.6px), nên cần HOG parameter chi tiết
-HOG_ORIENTATIONS = 12        # Tăng từ 9 để capture gradient chi tiết hơn
-HOG_PIXELS_PER_CELL = (4, 4) # Giữ nguyên, phù hợp với 28x28
-HOG_CELLS_PER_BLOCK = (2, 2) # Giữ nguyên
-HOG_BLOCK_NORM = 'L2-Hys'    # Chuẩn hoá block
+# === THAM SỐ HOG ===
+HOG_ORIENTATIONS = 12        # Số hướng gradient (360° / 12 = 30° mỗi bin)
+HOG_PIXELS_PER_CELL = (4, 4) # Mỗi cell 4x4 pixels -> 7x7 cells cho ảnh 28x28
+HOG_CELLS_PER_BLOCK = (2, 2) # Block 2x2 cells để L2 normalize
+HOG_BLOCK_NORM = 'L2-Hys'    # L2 norm + clipping (Hys = Hysteresis)
+
 
 def hog_features(images, desc="Extracting HOG"):
-    """Tạo HOG feature từ ảnh dataset (nền trắng, chữ đen, uint8 0-255).
+    """Extract HOG features từ batch ảnh.
     
-    Tham số:
-    - images: array (N, 28, 28) float32 [0,1] từ load_dataset_from_folder
-    - desc: mô tả cho progress bar
+    HOG mô tả hình dạng qua phân bố gradient:
+        - Chia ảnh thành cells
+        - Mỗi cell tính histogram của hướng gradient
+        - Normalize theo block để robust với lighting
     
-    Lưu ý: Dataset đã chuẩn hoá về [0,1] trong load_dataset_from_folder,
-    nên dùng * 255 để convert về uint8 là đúng.
+    Args:
+        images: (N, 28, 28) float32 [0,1]
+        desc: mô tả cho progress bar
+    
+    Returns:
+        (N, D) float32, D = số HOG features
     """
     feats = []
     for img in tqdm(images, desc=desc, unit="img", ncols=80):
-        # img: (28,28) float32 [0,1] (nền=1.0=trắng, chữ~0=đen)
-        img = (img * 255).astype("uint8")
+        img_uint8 = (img * 255).astype("uint8")
         
-        feat = hog(
-            img,
-            orientations=HOG_ORIENTATIONS,
-            pixels_per_cell=HOG_PIXELS_PER_CELL,
-            cells_per_block=HOG_CELLS_PER_BLOCK,
-            block_norm=HOG_BLOCK_NORM
-        )
+        feat = hog(img_uint8,
+                   orientations=HOG_ORIENTATIONS,
+                   pixels_per_cell=HOG_PIXELS_PER_CELL,
+                   cells_per_block=HOG_CELLS_PER_BLOCK,
+                   block_norm=HOG_BLOCK_NORM)
         feats.append(feat)
+    
     return np.array(feats, dtype="float32")
 
+
 def main():
-    print("=" * 60)
-    print("       TRAIN SVM MODEL - Handwritten Digit Recognition")
-    print("=" * 60)
+    # === Parse arguments ===
+    dataset = sys.argv[1] if len(sys.argv) > 1 else "dataset-main"
     
-    # === BƯỚC 1: Load dataset ===
+    print("=" * 60)
+    print("       TRAIN SVM MODEL - HOG Features")
+    print("=" * 60)
+    print(f"\nDataset: {dataset}")
+    
+    # === Load dataset ===
     print("\n[1/4] Loading dataset...")
-    X_train, y_train, X_test, y_test = load_dataset_from_folder("dataset-main")
+    X_train, y_train, X_test, y_test = load_dataset_from_folder(dataset)
     print(f"      Train: {X_train.shape[0]:,} images")
     print(f"      Test:  {X_test.shape[0]:,} images")
 
-    # === BƯỚC 2: Extract HOG features ===
+    # === Extract HOG ===
     print("\n[2/4] Extracting HOG features...")
     X_train_hog = hog_features(X_train, desc="Train HOG")
-    X_test_hog  = hog_features(X_test, desc="Test HOG ")
-    print(f"      Train HOG shape: {X_train_hog.shape}")
-    print(f"      Test HOG shape:  {X_test_hog.shape}")
+    X_test_hog = hog_features(X_test, desc="Test HOG ")
+    print(f"      HOG feature dim: {X_train_hog.shape[1]}")
 
-    # === BƯỚC 3: Train SVM ===
+    # === Train SVM ===
     print("\n[3/4] Training SVM (RBF kernel)...")
-    print("      Parameters: C=10.0, gamma='scale', probability=True")
-    print("      This may take a few minutes...\n")
+    print("      C=10.0, gamma='scale', probability=True")
     
-    # Progress bar giả lập cho training (SVM không có callback)
     clf = svm.SVC(
         kernel='rbf',
         gamma='scale',
         C=10.0,
-        class_weight='balanced',
-        probability=True,
-        verbose=False  # Tắt verbose của sklearn, dùng progress riêng
+        class_weight='balanced',  # Cân bằng class nếu data imbalanced
+        probability=True,         # Cho phép predict_proba()
+        verbose=False
     )
     
-    # Hiển thị spinner trong khi train
     start_time = time.time()
     clf.fit(X_train_hog, y_train)
-    train_time = time.time() - start_time
-    print(f"      Training completed in {train_time:.1f} seconds")
+    print(f"      Completed in {time.time() - start_time:.1f}s")
 
-    # === BƯỚC 4: Evaluate ===
-    print("\n[4/4] Evaluating model...")
+    # === Evaluate ===
+    print("\n[4/4] Evaluating...")
     
-    # Progress bar cho prediction
-    print("      Predicting on train set...")
-    y_pred_train = []
-    for i in tqdm(range(0, len(X_train_hog), 1000), desc="Train pred", ncols=80):
-        batch = X_train_hog[i:i+1000]
-        y_pred_train.extend(clf.predict(batch))
-    y_pred_train = np.array(y_pred_train)
-    
-    print("      Predicting on test set...")
+    # Predict theo batch để hiển thị progress
     y_pred_test = []
-    for i in tqdm(range(0, len(X_test_hog), 1000), desc="Test pred ", ncols=80):
-        batch = X_test_hog[i:i+1000]
-        y_pred_test.extend(clf.predict(batch))
-    y_pred_test = np.array(y_pred_test)
+    for i in tqdm(range(0, len(X_test_hog), 1000), desc="Predicting", ncols=80):
+        y_pred_test.extend(clf.predict(X_test_hog[i:i+1000]))
     
-    acc_train = accuracy_score(y_train, y_pred_train)
-    acc_test = accuracy_score(y_test, y_pred_test)
+    acc = accuracy_score(y_test, y_pred_test)
     
+    # Hiển thị kết quả
     print("\n" + "=" * 60)
-    print("                        RESULTS")
+    print(f"  Test Accuracy: {acc*100:.2f}%")
     print("=" * 60)
-    print(f"  Train Accuracy: {acc_train*100:.2f}%")
-    print(f"  Test Accuracy:  {acc_test*100:.2f}%")
     
-    # Hiển thị confusion matrix tóm tắt
+    # Per-digit accuracy
     cm = confusion_matrix(y_test, y_pred_test)
-    print(f"\n  Per-digit accuracy:")
-    print("  " + "-" * 40)
+    print("\n  Per-digit accuracy:")
     for i in range(10):
         correct = cm[i, i]
         total = cm[i].sum()
-        bar = "█" * int(correct/total * 20)
-        print(f"    Digit {i}: {bar:<20} {correct:>4}/{total:<4} ({correct/total*100:.1f}%)")
+        bar = "█" * int(correct / total * 20)
+        print(f"    {i}: {bar:<20} {correct:>4}/{total} ({100*correct/total:.1f}%)")
 
     # Save model
     os.makedirs("models", exist_ok=True)
     dump(clf, "models/svm_hog.joblib")
-    print("\n" + "=" * 60)
-    print(f"  Model saved to: models/svm_hog.joblib")
-    print("=" * 60)
+    print(f"\n  Saved: models/svm_hog.joblib")
+
 
 if __name__ == "__main__":
     main()

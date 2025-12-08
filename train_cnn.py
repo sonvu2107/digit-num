@@ -1,16 +1,32 @@
 """
-train_cnn.py
+train_cnn.py - Train CNN (Convolutional Neural Network) với PyTorch
 
-Train CNN (Convolutional Neural Network) cho nhận diện chữ số viết tay.
-- Nhanh: Train 40k ảnh trong 2-3 phút trên CPU
-- Chính xác: 99%+ accuracy
-- Nhẹ: Model chỉ ~100KB
+Hỗ trợ 2 dataset:
+    - dataset-main: 40k train, 10k test (dataset gốc)
+    - mnist_png: 60k train, 10k test (MNIST chuẩn)
 
-Sử dụng PyTorch.
+Sử dụng:
+    python train_cnn.py                    # Train với dataset-main
+    python train_cnn.py mnist_png          # Train với MNIST
+    python train_cnn.py mnist_png 20       # Train với MNIST, 20 epochs
+
+Architecture:
+    Input (1, 28, 28)
+    -> Conv2d(32, 3x3) + ReLU + MaxPool(2x2)  -> (32, 14, 14)
+    -> Conv2d(64, 3x3) + ReLU + MaxPool(2x2)  -> (64, 7, 7)  
+    -> Conv2d(64, 3x3) + ReLU + MaxPool(2x2)  -> (64, 3, 3)
+    -> Flatten -> Dense(128) + ReLU -> Dense(10)
+
+Data Augmentation:
+    - Random rotation ±15°
+    - Random shift ±2 pixels
+    - Random scale 0.9-1.1x
 """
 
 import os
+import sys
 import numpy as np
+import cv2
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -22,77 +38,93 @@ from dataset_main import load_dataset_from_folder
 
 
 class DigitCNN(nn.Module):
-    """CNN nhỏ gọn cho nhận diện chữ số 28x28."""
+    """CNN 3 lớp convolution cho nhận diện chữ số 28x28.
+    
+    Tổng parameters: ~130k (rất nhẹ)
+    """
     
     def __init__(self):
         super(DigitCNN, self).__init__()
         
-        # Conv layers
-        self.conv1 = nn.Conv2d(1, 32, kernel_size=3, padding=1)  # 28x28 -> 28x28
-        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, padding=1) # 14x14 -> 14x14
-        self.conv3 = nn.Conv2d(64, 64, kernel_size=3, padding=1) # 7x7 -> 7x7
+        # === Convolutional Layers ===
+        # Conv2d(in_channels, out_channels, kernel_size, padding)
+        self.conv1 = nn.Conv2d(1, 32, 3, padding=1)   # 28x28 -> 28x28
+        self.conv2 = nn.Conv2d(32, 64, 3, padding=1)  # 14x14 -> 14x14
+        self.conv3 = nn.Conv2d(64, 64, 3, padding=1)  # 7x7 -> 7x7
         
+        # MaxPool giảm kích thước 1/2
         self.pool = nn.MaxPool2d(2, 2)
-        self.dropout1 = nn.Dropout(0.25)
-        self.dropout2 = nn.Dropout(0.5)
         
-        # Fully connected layers
+        # Dropout: tắt ngẫu nhiên neurons để tránh overfitting
+        self.dropout1 = nn.Dropout(0.25)  # Sau conv
+        self.dropout2 = nn.Dropout(0.5)   # Trước output
+        
+        # === Fully Connected Layers ===
+        # 64 channels x 3x3 = 576 -> 128 -> 10
         self.fc1 = nn.Linear(64 * 3 * 3, 128)
         self.fc2 = nn.Linear(128, 10)
         
         self.relu = nn.ReLU()
     
     def forward(self, x):
-        # x: (batch, 1, 28, 28)
-        x = self.relu(self.conv1(x))   # -> (batch, 32, 28, 28)
-        x = self.pool(x)                # -> (batch, 32, 14, 14)
+        """Forward pass: x shape (batch, 1, 28, 28)"""
+        # Block 1: Conv -> ReLU -> Pool
+        x = self.pool(self.relu(self.conv1(x)))  # -> (batch, 32, 14, 14)
         
-        x = self.relu(self.conv2(x))   # -> (batch, 64, 14, 14)
-        x = self.pool(x)                # -> (batch, 64, 7, 7)
+        # Block 2
+        x = self.pool(self.relu(self.conv2(x)))  # -> (batch, 64, 7, 7)
         
-        x = self.relu(self.conv3(x))   # -> (batch, 64, 7, 7)
-        x = self.pool(x)                # -> (batch, 64, 3, 3)
+        # Block 3
+        x = self.pool(self.relu(self.conv3(x)))  # -> (batch, 64, 3, 3)
         x = self.dropout1(x)
         
-        x = x.view(-1, 64 * 3 * 3)      # Flatten
-        x = self.relu(self.fc1(x))
-        x = self.dropout2(x)
-        x = self.fc2(x)
+        # Flatten và FC
+        x = x.view(-1, 64 * 3 * 3)
+        x = self.dropout2(self.relu(self.fc1(x)))
+        x = self.fc2(x)  # Logits (chưa softmax)
         
         return x
 
 
 def augment_batch(images):
-    """Data augmentation on-the-fly cho batch ảnh.
+    """Data augmentation on-the-fly cho một batch.
     
-    images: tensor (batch, 1, 28, 28)
+    Các biến đổi:
+        - Rotation: xoay ±15° (50% chance)
+        - Translation: dịch ±2px (50% chance)  
+        - Scale: zoom 0.9-1.1x (30% chance)
+    
+    Args:
+        images: tensor (batch, 1, 28, 28)
+    
+    Returns:
+        augmented tensor cùng shape
     """
-    batch_size = images.size(0)
     augmented = images.clone()
     
-    for i in range(batch_size):
-        img = augmented[i, 0].numpy()  # (28, 28)
+    for i in range(images.size(0)):
+        img = augmented[i, 0].numpy()
         
-        # Random rotation ±15°
+        # Random rotation
         if np.random.random() > 0.5:
             angle = np.random.uniform(-15, 15)
             M = cv2.getRotationMatrix2D((14, 14), angle, 1.0)
             img = cv2.warpAffine(img, M, (28, 28), borderValue=1.0)
         
-        # Random shift ±2 pixels
+        # Random shift
         if np.random.random() > 0.5:
-            tx = np.random.randint(-2, 3)
-            ty = np.random.randint(-2, 3)
+            tx, ty = np.random.randint(-2, 3, 2)
             M = np.float32([[1, 0, tx], [0, 1, ty]])
             img = cv2.warpAffine(img, M, (28, 28), borderValue=1.0)
         
-        # Random scale 0.9-1.1
+        # Random scale
         if np.random.random() > 0.7:
             scale = np.random.uniform(0.9, 1.1)
             new_size = int(28 * scale)
-            img_uint8 = (img * 255).astype(np.uint8)
-            img_resized = cv2.resize(img_uint8, (new_size, new_size))
+            img_resized = cv2.resize((img * 255).astype(np.uint8),
+                                     (new_size, new_size))
             
+            # Pad hoặc crop về 28x28
             result = np.full((28, 28), 255, dtype=np.uint8)
             if new_size > 28:
                 start = (new_size - 28) // 2
@@ -107,160 +139,126 @@ def augment_batch(images):
     return augmented
 
 
-import cv2  # Cần cho augmentation
-
-
 def main():
-    print("=" * 60)
-    print("   TRAIN CNN - DIGIT RECOGNITION")
-    print("=" * 60)
+    # === Parse arguments ===
+    dataset = sys.argv[1] if len(sys.argv) > 1 else "dataset-main"
+    epochs = int(sys.argv[2]) if len(sys.argv) > 2 else 10
     
-    # Device
+    print("=" * 60)
+    print("       TRAIN CNN MODEL - PyTorch")
+    print("=" * 60)
+    print(f"\nDataset: {dataset}")
+    print(f"Epochs:  {epochs}")
+    
+    # Device: GPU nếu có, không thì CPU
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"\nUsing device: {device}")
+    print(f"Device:  {device}")
     
     # === Load dataset ===
     print("\n[1/4] Loading dataset...")
-    X_train, y_train, X_test, y_test = load_dataset_from_folder("dataset-main")
+    X_train, y_train, X_test, y_test = load_dataset_from_folder(dataset)
     
-    # Reshape to (N, 1, 28, 28) for CNN
+    # Reshape: (N, 28, 28) -> (N, 1, 28, 28) cho CNN
     X_train = X_train.reshape(-1, 1, 28, 28)
     X_test = X_test.reshape(-1, 1, 28, 28)
     
-    # Convert to tensors
-    X_train_t = torch.from_numpy(X_train)
-    y_train_t = torch.from_numpy(y_train)
-    X_test_t = torch.from_numpy(X_test)
-    y_test_t = torch.from_numpy(y_test)
-    
-    # DataLoader
-    train_dataset = TensorDataset(X_train_t, y_train_t)
-    test_dataset = TensorDataset(X_test_t, y_test_t)
+    # Convert sang PyTorch tensors
+    train_dataset = TensorDataset(torch.from_numpy(X_train),
+                                  torch.from_numpy(y_train))
+    test_dataset = TensorDataset(torch.from_numpy(X_test),
+                                 torch.from_numpy(y_test))
     
     BATCH_SIZE = 64
     train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
-    test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False)
+    test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE)
     
-    print(f"      Train: {len(X_train):,} images")
-    print(f"      Test:  {len(X_test):,} images")
+    print(f"      Train: {len(X_train):,}, Test: {len(X_test):,}")
     
     # === Create model ===
-    print("\n[2/4] Creating CNN model...")
+    print("\n[2/4] Creating model...")
     model = DigitCNN().to(device)
+    print(f"      Parameters: {sum(p.numel() for p in model.parameters()):,}")
     
-    # Count parameters
-    total_params = sum(p.numel() for p in model.parameters())
-    print(f"      Total parameters: {total_params:,}")
-    
-    # Loss and optimizer
+    # Loss: CrossEntropy = Softmax + NLLLoss
     criterion = nn.CrossEntropyLoss()
+    
+    # Optimizer: Adam với learning rate decay
     optimizer = optim.Adam(model.parameters(), lr=0.001)
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.5)
     
     # === Training ===
-    print("\n[3/4] Training CNN...")
-    EPOCHS = 10
-    USE_AUGMENTATION = True
-    
+    print("\n[3/4] Training...")
     start_time = time.time()
     
-    for epoch in range(EPOCHS):
+    for epoch in range(epochs):
         model.train()
-        running_loss = 0.0
-        correct = 0
-        total = 0
+        correct, total = 0, 0
         
-        pbar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{EPOCHS}", ncols=80)
-        
+        pbar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{epochs}", ncols=80)
         for images, labels in pbar:
-            # Data augmentation on-the-fly
-            if USE_AUGMENTATION:
-                images = augment_batch(images)
+            # Augmentation
+            images = augment_batch(images)
+            images, labels = images.to(device), labels.to(device)
             
-            images = images.to(device)
-            labels = labels.to(device)
-            
+            # Forward + Backward + Optimize
             optimizer.zero_grad()
             outputs = model(images)
             loss = criterion(outputs, labels)
             loss.backward()
             optimizer.step()
             
-            running_loss += loss.item()
+            # Accuracy
             _, predicted = outputs.max(1)
             total += labels.size(0)
             correct += predicted.eq(labels).sum().item()
             
-            pbar.set_postfix({
-                'loss': f'{loss.item():.4f}',
-                'acc': f'{100.*correct/total:.1f}%'
-            })
+            pbar.set_postfix(loss=f"{loss.item():.4f}",
+                           acc=f"{100*correct/total:.1f}%")
         
         scheduler.step()
         
-        # Validate
+        # Validation
         model.eval()
-        val_correct = 0
-        val_total = 0
-        with torch.no_grad():
-            for images, labels in test_loader:
-                images = images.to(device)
-                labels = labels.to(device)
-                outputs = model(images)
-                _, predicted = outputs.max(1)
-                val_total += labels.size(0)
-                val_correct += predicted.eq(labels).sum().item()
-        
-        val_acc = 100. * val_correct / val_total
-        train_acc = 100. * correct / total
-        print(f"      Train acc: {train_acc:.2f}% | Val acc: {val_acc:.2f}%")
+        val_correct = sum(
+            (model(img.to(device)).argmax(1) == lab.to(device)).sum().item()
+            for img, lab in test_loader
+        )
+        print(f"      Val acc: {100*val_correct/len(X_test):.2f}%")
     
-    train_time = time.time() - start_time
-    print(f"\n      Training completed in {train_time:.1f} seconds")
+    print(f"\n      Training time: {time.time() - start_time:.1f}s")
     
     # === Final evaluation ===
     print("\n[4/4] Final evaluation...")
     model.eval()
     
-    correct = 0
-    total = 0
-    per_class_correct = [0] * 10
-    per_class_total = [0] * 10
+    per_class = [[0, 0] for _ in range(10)]  # [correct, total]
     
     with torch.no_grad():
         for images, labels in test_loader:
-            images = images.to(device)
-            labels = labels.to(device)
-            outputs = model(images)
-            _, predicted = outputs.max(1)
+            outputs = model(images.to(device))
+            preds = outputs.argmax(1).cpu()
             
-            for i in range(len(labels)):
-                label = labels[i].item()
-                pred = predicted[i].item()
-                per_class_total[label] += 1
-                if label == pred:
-                    per_class_correct[label] += 1
-                    correct += 1
-                total += 1
+            for pred, label in zip(preds, labels):
+                per_class[label.item()][1] += 1
+                if pred == label:
+                    per_class[label.item()][0] += 1
+    
+    total_correct = sum(c[0] for c in per_class)
+    total_samples = sum(c[1] for c in per_class)
     
     print("\n" + "=" * 60)
-    print("                        RESULTS")
+    print(f"  Test Accuracy: {100*total_correct/total_samples:.2f}%")
     print("=" * 60)
-    print(f"  Test Accuracy:  {100.*correct/total:.2f}%")
     
-    print(f"\n  Per-digit accuracy:")
-    print("  " + "-" * 40)
-    for i in range(10):
-        acc = per_class_correct[i] / per_class_total[i] if per_class_total[i] > 0 else 0
-        bar = "█" * int(acc * 20)
-        print(f"    Digit {i}: {bar:<20} {per_class_correct[i]:>4}/{per_class_total[i]:<4} ({acc*100:.1f}%)")
+    print("\n  Per-digit:")
+    for i, (correct, total) in enumerate(per_class):
+        bar = "█" * int(correct / total * 20)
+        print(f"    {i}: {bar:<20} {correct:>4}/{total} ({100*correct/total:.1f}%)")
     
-    # Save model
+    # Save
     os.makedirs("models", exist_ok=True)
     torch.save(model.state_dict(), "models/cnn_digit.pth")
-    print("\n" + "=" * 60)
-    print(f"  Model saved to: models/cnn_digit.pth")
-    print("=" * 60)
+    print(f"\n  Saved: models/cnn_digit.pth")
 
 
 if __name__ == "__main__":
