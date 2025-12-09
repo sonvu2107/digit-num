@@ -57,7 +57,7 @@ def preprocess_digit_from_bgr(img_bgr):
     """Tiền xử lý ảnh BGR từ GUI về format 28x28 chuẩn.
     
     Args:
-        img_bgr: ảnh BGR từ GUI (thường 280x280), nền đen, chữ trắng
+        img_bgr: ảnh BGR từ GUI (thường 280x280), nền TRẮNG, chữ ĐEN
     
     Returns:
         numpy (28,28) float32 [0,1], chữ đen nền trắng
@@ -68,10 +68,11 @@ def preprocess_digit_from_bgr(img_bgr):
     gray = cv2.GaussianBlur(gray, BLUR_KERNEL, 0)
 
     # 2. Threshold Otsu: tự động chọn ngưỡng tối ưu
+    # THRESH_BINARY_INV: chữ đen -> trắng (để tìm contour)
     _, th = cv2.threshold(gray, 0, 255,
-                          cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+                          cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
 
-    # 3. Tìm contour chữ (chữ trắng trên nền đen)
+    # 3. Tìm contour chữ (chữ trắng trên nền đen sau invert)
     contours, _ = cv2.findContours(th, cv2.RETR_EXTERNAL,
                                    cv2.CHAIN_APPROX_SIMPLE)
     if not contours:
@@ -105,12 +106,13 @@ def preprocess_digit_from_bgr(img_bgr):
     # Threshold lại để đảm bảo nhị phân sau resize
     _, digit_resized = cv2.threshold(digit_resized, 127, 255, cv2.THRESH_BINARY)
 
-    # 6. Căn giữa vào canvas 28x28, đảo màu
+    # 6. Căn giữa vào canvas 28x28
     canvas = np.full((28, 28), 255, dtype=np.uint8)  # Nền trắng
     x_off = (28 - new_w) // 2
     y_off = (28 - new_h) // 2
     
-    digit_final = 255 - digit_resized  # Đảo: trắng->đen
+    # Đặt chữ (đen = 0) vào canvas (không cần đảo màu nữa vì đã dùng BINARY_INV)
+    digit_final = 255 - digit_resized  # trắng(255) -> đen(0)
     canvas[y_off:y_off+new_h, x_off:x_off+new_w] = digit_final
 
     # 7. Chuẩn hoá [0,1]

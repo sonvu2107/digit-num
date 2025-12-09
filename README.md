@@ -1,94 +1,87 @@
 # Digit Num - Nhận diện chữ số viết tay
 
-Dự án nhỏ: GUI vẽ chữ số (canvas nền đen, nét trắng) và 2 bộ dự đoán đã train sẵn:
-- SVM (HOG features) — `models/svm_hog.joblib`
-- MLP (pixel 28x28) — `models/mlp_digit.joblib`
+Dự án nhận diện chữ số viết tay sử dụng mô hình CNN (Convolutional Neural Network) với độ chính xác cao (~99.4%).
 
-Mục tiêu
-- Cho phép vẽ chữ số bằng chuột trong GUI và so sánh dự đoán giữa SVM và MLP.
-- Có pipeline tiền xử lý (`preprocess.py`) để đưa ảnh GUI về định dạng 28×28 giống dataset train.
+## Tính năng
+- **GUI vẽ chữ số**: Canvas 280x280 nền đen, nét trắng.
+- **Nhận diện thời gian thực**: Sử dụng mô hình CNN đã train.
+- **Hỗ trợ 2 dataset**:
+  - `dataset-main`: 40k ảnh train, 10k ảnh test (nền trắng, chữ đen).
+  - `mnist_png`: 60k ảnh train, 10k ảnh test (nền đen, chữ trắng).
+- **Tiền xử lý thông minh**: Tự động căn giữa, chỉnh nghiêng (deskew), chuẩn hóa ảnh đầu vào.
 
-**Lưu ý quan trọng:** dataset train có ảnh *nền trắng, chữ đen*. GUI mặc định là *nền đen, chữ trắng*. `preprocess.py` đã đảo màu và chuẩn hóa để phù hợp với dataset.
-
-**Khuyến nghị khi vẽ để test:**
-- Đặt `LINE_WIDTH` trong `app_gui.py` khoảng `12`–`18` (mặc định `18`).
-- Không đặt `LINE_WIDTH` quá nhỏ (ví dụ `1`) vì sau khi crop+resize xuống 28×28 nét sẽ bị mất, dẫn tới lỗi dự đoán.
-- Vẽ chữ to, chiếm 60–80% chiều cao canvas.
-
-Cấu trúc chính của repo
+## Cấu trúc dự án
 ```
-app_gui.py          # GUI vẽ + gọi infer
-preprocess.py       # Tiền xử lý ảnh từ GUI -> 28x28 float32 [0,1]
-infer.py            # wrapper gọi SVM và MLP
-train_mlp.py        # script train MLP (nếu cần train lại)
-train_svm.py        # script train SVM (nếu cần train lại)
-models/             # chứa model đã train (.joblib)
-dataset-main/       # chứa train/test dataset (28x28 images)
+app_gui.py          # GUI vẽ + gọi nhận diện
+preprocess.py       # Pipeline tiền xử lý ảnh (Deskew, Resize, Center)
+infer.py            # Wrapper gọi model CNN
+train_cnn.py        # Script train CNN (PyTorch)
+train_mlp.py        # Script train MLP (để tham khảo)
+train_svm.py        # Script train SVM (để tham khảo)
+dataset_main.py     # Module load dataset
+models/             # Chứa model đã train (.pth, .joblib)
+dataset-main/       # Dataset gốc
+mnist_png/          # Dataset MNIST
 ```
 
-Yêu cầu môi trường
-- Python 3.8+ (cũng chạy trên 3.10+)
-- Các thư viện (cài bằng pip):
-
+## Yêu cầu cài đặt
+- Python 3.10+
+- Các thư viện:
 ```powershell
-pip install numpy opencv-python pillow scikit-image scikit-learn joblib
-# Nếu chạy model CNN (TensorFlow), cài tensorflow tương ứng
-# pip install "tensorflow<2.16"
+pip install numpy opencv-python pillow scikit-learn joblib torch torchvision tqdm
 ```
 
-Chạy GUI
+## Sử dụng
+
+### 1. Chạy ứng dụng nhận diện
 ```powershell
 python app_gui.py
 ```
-- Vẽ chữ số bằng chuột, nhấn `Nhận diện` để gọi 2 model.
-- Kết quả hiển thị trên giao diện (SVM, MLP và confidence nếu có).
+- Vẽ chữ số lên canvas đen.
+- Bấm "Nhận diện" để xem kết quả dự đoán và độ tin cậy (confidence).
 
-Tiền xử lý (`preprocess.py`) — tóm tắt
-- Input: ảnh BGR (OpenCV) từ GUI, kích thước ví dụ `280x280`, nền đen, chữ trắng.
-- Bước chính:
-  1. Chuyển sang grayscale, blur nhẹ.
-  2. Threshold nhị phân để tách chữ trắng trên nền đen.
-  3. Tìm contour lớn nhất, crop vùng chữ.
-  4. Deskew (dựng thẳng chữ nếu nghiêng).
-  5. Resize (giữ tỉ lệ) sao cho phần lớn chữ có kích thước ~20px, pad ra `28x28` với nền trắng.
-  6. Đảo màu (từ chữ trắng nền đen -> chữ đen nền trắng).
-  7. Chuẩn hóa về float32 trong `[0,1]` và trả về.
+### 2. Huấn luyện mô hình (Training)
 
-Ghi chú: Trong code hiện tại đã thêm `canvas = 1.0 - canvas` để đảo màu phù hợp với dataset train.
-
-Debug & lưu ảnh 28×28 để so sánh
-- Nếu vẫn gặp nhiều lỗi dự đoán, bạn có thể lưu ảnh `28x28` sau bước preprocess ra file để xem model thực sự nhận gì.
-- Ví dụ chỉnh `preprocess.py` (tạm thời) để lưu:
-
-```python
-cv2.imwrite(f"debug_{label_or_idx}.png", (canvas*255).astype('uint8'))
-```
-
-(hoặc thêm tham số `save_debug=True` cho hàm `preprocess_digit_from_bgr` rồi gọi từ `app_gui.py` khi cần).
-
-Điều chỉnh cần cân nhắc nếu vẫn có lỗi
-- Tăng `LINE_WIDTH` trong `app_gui.py` (12–18).
-- Bỏ hoặc không dùng `erode` trong `preprocess.py` (erode làm mảnh nét hơn).
-- Tinh chỉnh blur/deskew/resize nếu ảnh GUI khác nhiều so với tập train.
-
-Chạy training (nếu muốn train lại)
-- MLP:
+**Train CNN (Khuyến nghị):**
 ```powershell
-python train_mlp.py
-```
-- SVM (HOG):
-```powershell
-python train_svm.py
-```
-- CNN (nếu có script):
-```powershell
+# Train với dataset gốc (mặc định)
 python train_cnn.py
+
+# Train với MNIST
+python train_cnn.py mnist_png
+
+# Train với số epochs tùy chọn
+python train_cnn.py mnist_png 30
 ```
 
-Cách báo lỗi / góp ý
-- Nếu bạn thấy model vẫn đoán sai nhiều, gửi kèm các ảnh `debug_*.png` (ảnh 28×28 sau preprocess) + ảnh chụp GUI gốc để mình xem và đề xuất điều chỉnh (blur/deskew/resize hoặc augmentation).
+**Train MLP / SVM (Tham khảo):**
+```powershell
+python train_mlp.py [dataset] [epochs]
+python train_svm.py [dataset]
+```
 
-License & nguồn
-- Đây là một dự án demo/nội bộ, không có license cụ thể.
+## Thuật toán & Cải tiến
+
+### 1. Tiền xử lý (Preprocessing)
+Để đảm bảo model hoạt động tốt với nét vẽ từ GUI, pipeline xử lý bao gồm:
+- **Grayscale & Blur**: Giảm nhiễu.
+- **Otsu Thresholding**: Tách nét vẽ khỏi nền.
+- **ROI Cropping**: Cắt vùng chứa chữ số.
+- **Deskewing**: Tự động xoay ảnh để chữ số thẳng đứng (dựa trên image moments).
+- **Aspect Ratio Preserving Resize**: Resize về 20x20 giữ nguyên tỉ lệ, sau đó pad vào trung tâm ảnh 28x28.
+- **Color Inversion**: Đảm bảo đầu vào luôn là **nền trắng, chữ đen** (hoặc ngược lại tùy config) để đồng bộ với tập train.
+
+### 2. Mô hình CNN
+Mô hình CNN được thiết kế với kiến trúc:
+- **3 Convolutional Layers**: (32, 64, 64 filters) để trích xuất đặc trưng không gian.
+- **MaxPooling**: Giảm chiều dữ liệu, giữ lại đặc trưng quan trọng.
+- **Dropout (0.25, 0.5)**: Chống overfitting hiệu quả.
+- **Fully Connected Layers**: Phân lớp cuối cùng.
+- **Accuracy**: Đạt ~99.42% trên tập test.
+
+### 3. Dataset Handling
+- Hỗ trợ load linh hoạt giữa `dataset-main` và `mnist_png`.
+- Tự động xử lý sự khác biệt về màu sắc (nền đen/trắng) giữa các dataset thông qua flag `invert` trong `dataset_main.py`.
 
 ---
+*Dự án được phát triển với sự hỗ trợ của AI Assistant.*
