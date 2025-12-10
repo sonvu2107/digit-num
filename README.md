@@ -1,9 +1,9 @@
 # Digit Num - Nhận diện chữ số viết tay
 
-Dự án nhận diện chữ số viết tay sử dụng mô hình CNN (Convolutional Neural Network) với độ chính xác cao (~99.4%).
+Dự án nhận diện chữ số viết tay sử dụng mô hình CNN (Convolutional Neural Network) với độ chính xác cao (~99.6%).
 
 ## Tính năng
-- **GUI vẽ chữ số**: Canvas 280x280 nền đen, nét trắng.
+- **GUI vẽ chữ số**: Canvas 280x280 nền trắng, nét đen.
 - **Nhận diện thời gian thực**: Sử dụng mô hình CNN đã train.
 - **Hỗ trợ 2 dataset**:
   - `dataset-main`: 40k ảnh train, 10k ảnh test (nền trắng, chữ đen).
@@ -22,6 +22,7 @@ dataset_main.py     # Module load dataset
 models/             # Chứa model đã train (.pth, .joblib)
 dataset-main/       # Dataset gốc
 mnist_png/          # Dataset MNIST
+(có thay đổi, sẽ update lại cấu trúc sau)
 ```
 
 ## Yêu cầu cài đặt
