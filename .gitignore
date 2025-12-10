@@ -1,9 +1,18 @@
 # Dataset folders
 dataset-main/
 mnist_png/
+dataset_extra/
+
+# Zip files
+*.zip
+
+# Debug images
+debug_images/
 
 # Large model files
 models/svm_hog.joblib
+models/*.keras
+models/*.h5
 
 # Python
 __pycache__/
