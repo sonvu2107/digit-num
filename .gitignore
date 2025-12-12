@@ -3,6 +3,9 @@ dataset-main/
 mnist_png/
 dataset_extra/
 
+# PyTorch (chỉ dùng TensorFlow)
+pytorch/
+
 # Zip files
 *.zip
 
