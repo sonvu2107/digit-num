@@ -12,17 +12,25 @@ import numpy as np
 from PIL import Image, ImageDraw
 import cv2
 import os
+import sys
 import time
+
+# Thêm thư mục cha vào path để import
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from infer_tf import predict_with_cnn_tf
 from preprocess import preprocess_digit_from_bgr
 
 CANVAS_SIZE = 280
 DEFAULT_LINE_WIDTH = 12
-DATASET_SAVE_DIR = "dataset_extra"
+
+# Đường dẫn thư mục (từ thư mục gốc)
+ROOT_DIR = os.path.join(os.path.dirname(__file__), "..")
+DATASET_SAVE_DIR = os.path.join(ROOT_DIR, "dataset_extra")
+DEBUG_IMAGES_DIR = os.path.join(ROOT_DIR, "debug_images")
 
 # Đảm bảo các thư mục tồn tại
-os.makedirs("debug_images", exist_ok=True)
+os.makedirs(DEBUG_IMAGES_DIR, exist_ok=True)
 for d in range(10):
     os.makedirs(os.path.join(DATASET_SAVE_DIR, str(d)), exist_ok=True)
 
@@ -135,7 +143,7 @@ class DigitApp:
 
         # Lưu debug ảnh preprocess
         dbg = (digit * 255).astype("uint8")
-        debug_path = os.path.join("debug_images", "debug_preprocess.png")
+        debug_path = os.path.join(DEBUG_IMAGES_DIR, "debug_preprocess.png")
         cv2.imwrite(debug_path, dbg)
 
         # Gọi model predict (vẫn dùng ảnh gốc, vì infer_tf tự preprocess lại)

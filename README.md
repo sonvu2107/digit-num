@@ -1,87 +1,98 @@
 # Digit Num - Nhận diện chữ số viết tay
 
-Dự án nhận diện chữ số viết tay sử dụng mô hình CNN (Convolutional Neural Network) với độ chính xác cao (~99.4%).
+Dự án nhận diện chữ số viết tay sử dụng mô hình CNN (Convolutional Neural Network) với TensorFlow, đạt độ chính xác **99.55%**.
 
 ## Tính năng
-- **GUI vẽ chữ số**: Canvas 280x280 nền đen, nét trắng.
+- **GUI vẽ chữ số**: Canvas 280x280 để vẽ và nhận diện chữ số.
 - **Nhận diện thời gian thực**: Sử dụng mô hình CNN đã train.
-- **Hỗ trợ 2 dataset**:
-  - `dataset-main`: 40k ảnh train, 10k ảnh test (nền trắng, chữ đen).
-  - `mnist_png`: 60k ảnh train, 10k ảnh test (nền đen, chữ trắng).
+- **Dataset**:
+  - `mnist_png`: 60k ảnh train, 10k ảnh test (MNIST chuẩn).
+  - `dataset_extra`: Mẫu tự vẽ từ GUI (tự động merge vào train).
 - **Tiền xử lý thông minh**: Tự động căn giữa, chỉnh nghiêng (deskew), chuẩn hóa ảnh đầu vào.
+
+## Kết quả Training
+
+| Metric | Giá trị |
+|--------|---------|
+| **Accuracy** | 99.55% |
+| **Train Samples** | 60,538 (60k MNIST + 538 extra) |
+| **Test Samples** | 10,000 |
+| **Epochs** | 20 |
+| **Model Size** | 130,890 params (~511 KB) |
+
+### Per-digit Accuracy
+| Digit | Precision | Recall | F1-Score |
+|-------|-----------|--------|----------|
+| 0 | 99.69% | 99.80% | 99.75% |
+| 1 | 99.82% | 99.56% | 99.69% |
+| 2 | 99.61% | 99.52% | 99.56% |
+| 3 | 99.02% | 99.90% | 99.46% |
+| 4 | 99.29% | 99.80% | 99.54% |
+| 5 | 99.89% | 99.33% | 99.61% |
+| 6 | 99.89% | 99.16% | 99.53% |
+| 7 | 99.22% | 99.61% | 99.42% |
+| 8 | 99.39% | 99.69% | 99.54% |
+| 9 | 99.70% | 99.11% | 99.40% |
 
 ## Cấu trúc dự án
 ```
-app_gui.py          # GUI vẽ + gọi nhận diện
-preprocess.py       # Pipeline tiền xử lý ảnh (Deskew, Resize, Center)
-infer.py            # Wrapper gọi model CNN
-train_cnn.py        # Script train CNN (PyTorch)
-train_mlp.py        # Script train MLP (để tham khảo)
-train_svm.py        # Script train SVM (để tham khảo)
-dataset_main.py     # Module load dataset
-models/             # Chứa model đã train (.pth, .joblib)
-dataset-main/       # Dataset gốc
-mnist_png/          # Dataset MNIST
+digit-num/
+├── models/
+│   └── cnn_digit_tf.keras  # TensorFlow CNN model
+├── tf/
+│   ├── app_gui_tf.py       # GUI app
+│   ├── infer_tf.py         # Inference module
+│   └── train_cnn_tf.py     # Training script
+├── preprocess.py           # Pipeline tiền xử lý ảnh
+├── dataset_main.py         # Module load dataset
+├── dataset_extra/          # Dataset bổ sung từ GUI
+└── mnist_png/              # Dataset MNIST
 ```
 
 ## Yêu cầu cài đặt
 - Python 3.10+
-- Các thư viện:
+
 ```powershell
-pip install numpy opencv-python pillow scikit-learn joblib torch torchvision tqdm
+pip install -r requirements.txt
+```
+
+Hoặc:
+```powershell
+pip install numpy opencv-python pillow scikit-learn tensorflow tqdm scikit-image
 ```
 
 ## Sử dụng
 
 ### 1. Chạy ứng dụng nhận diện
 ```powershell
-python app_gui.py
+cd tf
+python app_gui_tf.py
 ```
-- Vẽ chữ số lên canvas đen.
-- Bấm "Nhận diện" để xem kết quả dự đoán và độ tin cậy (confidence).
 
-### 2. Huấn luyện mô hình (Training)
+- Vẽ chữ số lên canvas.
+- Bấm "Nhận diện" để xem kết quả.
+- Bấm "Lưu mẫu" để lưu ảnh vào `dataset_extra/`.
 
-**Train CNN (Khuyến nghị):**
+### 2. Huấn luyện mô hình
 ```powershell
-# Train với dataset gốc (mặc định)
-python train_cnn.py
-
-# Train với MNIST
-python train_cnn.py mnist_png
-
-# Train với số epochs tùy chọn
-python train_cnn.py mnist_png 30
+cd tf
+python train_cnn_tf.py          # Mặc định 10 epochs
+python train_cnn_tf.py all 20   # 20 epochs
 ```
 
-**Train MLP / SVM (Tham khảo):**
-```powershell
-python train_mlp.py [dataset] [epochs]
-python train_svm.py [dataset]
+## Kiến trúc CNN
 ```
-
-## Thuật toán & Cải tiến
-
-### 1. Tiền xử lý (Preprocessing)
-Để đảm bảo model hoạt động tốt với nét vẽ từ GUI, pipeline xử lý bao gồm:
-- **Grayscale & Blur**: Giảm nhiễu.
-- **Otsu Thresholding**: Tách nét vẽ khỏi nền.
-- **ROI Cropping**: Cắt vùng chứa chữ số.
-- **Deskewing**: Tự động xoay ảnh để chữ số thẳng đứng (dựa trên image moments).
-- **Aspect Ratio Preserving Resize**: Resize về 20x20 giữ nguyên tỉ lệ, sau đó pad vào trung tâm ảnh 28x28.
-- **Color Inversion**: Đảm bảo đầu vào luôn là **nền trắng, chữ đen** (hoặc ngược lại tùy config) để đồng bộ với tập train.
-
-### 2. Mô hình CNN
-Mô hình CNN được thiết kế với kiến trúc:
-- **3 Convolutional Layers**: (32, 64, 64 filters) để trích xuất đặc trưng không gian.
-- **MaxPooling**: Giảm chiều dữ liệu, giữ lại đặc trưng quan trọng.
-- **Dropout (0.25, 0.5)**: Chống overfitting hiệu quả.
-- **Fully Connected Layers**: Phân lớp cuối cùng.
-- **Accuracy**: Đạt ~99.42% trên tập test.
-
-### 3. Dataset Handling
-- Hỗ trợ load linh hoạt giữa `dataset-main` và `mnist_png`.
-- Tự động xử lý sự khác biệt về màu sắc (nền đen/trắng) giữa các dataset thông qua flag `invert` trong `dataset_main.py`.
-
----
-*Dự án được phát triển với sự hỗ trợ của AI Assistant.*
+Input (28x28x1)
+    ↓
+Conv2D(32) + MaxPool → 14x14x32
+    ↓
+Conv2D(64) + MaxPool → 7x7x64
+    ↓
+Conv2D(64) + MaxPool → 3x3x64
+    ↓
+Dropout(0.25) + Flatten → 576
+    ↓
+Dense(128) + Dropout(0.5)
+    ↓
+Dense(10) + Softmax → Output
+```

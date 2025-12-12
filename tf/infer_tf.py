@@ -3,16 +3,24 @@ infer_tf.py - Inference CNN với TensorFlow (rút gọn)
 """
 
 import os
+import sys
+
+# Thêm thư mục cha vào path để import preprocess
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 import numpy as np
 from tensorflow import keras
 from preprocess import preprocess_digit_from_bgr
 
+# Đường dẫn đến model (từ thư mục gốc)
+MODEL_PATH = os.path.join(os.path.dirname(__file__), "..", "models", "cnn_digit_tf.keras")
+
 # Load model
 _model = None
-if os.path.exists("models/cnn_digit_tf.keras"):
-    _model = keras.models.load_model("models/cnn_digit_tf.keras")
+if os.path.exists(MODEL_PATH):
+    _model = keras.models.load_model(MODEL_PATH)
     print("[infer_tf] Model loaded")
 
 

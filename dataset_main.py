@@ -139,3 +139,66 @@ def load_dataset_from_folder(root="dataset-main", max_per_class=None, include_ex
     
     return X_train, y_train, X_test, y_test
 
+
+def load_all_datasets(include_extra=True):
+    """Load và kết hợp TẤT CẢ dataset: mnist_png + dataset_extra.
+    
+    Đây là hàm để train model với toàn bộ dữ liệu có sẵn.
+    
+    Args:
+        include_extra: có load thêm dataset_extra không (mặc định: True)
+    
+    Returns:
+        X_train, y_train, X_test, y_test
+        - X: (N, 28, 28) float32 [0,1], nền trắng chữ đen
+        - y: (N,) int64
+    
+    Tổng dataset:
+        - Train: ~60k+ (60k mnist_png + dataset_extra)
+        - Test: ~10k
+    """
+    print("=" * 60)
+    print("  LOADING ALL DATASETS")
+    print("=" * 60)
+    
+    all_X_train = []
+    all_y_train = []
+    all_X_test = []
+    all_y_test = []
+    
+    # Load mnist_png
+    if os.path.exists("mnist_png"):
+        X_train, y_train, X_test, y_test = load_dataset_from_folder(
+            "mnist_png", include_extra=False
+        )
+        all_X_train.append(X_train)
+        all_y_train.append(y_train)
+        all_X_test.append(X_test)
+        all_y_test.append(y_test)
+    
+    # Load dataset_extra
+    if include_extra:
+        X_extra, y_extra = load_extra_samples()
+        if X_extra is not None and len(X_extra) > 0:
+            all_X_train.append(X_extra)
+            all_y_train.append(y_extra)
+            print(f"Loaded extra samples: {len(X_extra)}")
+    
+    # Kết hợp tất cả
+    X_train = np.concatenate(all_X_train, axis=0)
+    y_train = np.concatenate(all_y_train, axis=0)
+    X_test = np.concatenate(all_X_test, axis=0)
+    y_test = np.concatenate(all_y_test, axis=0)
+    
+    # Shuffle training data
+    perm = np.random.permutation(len(X_train))
+    X_train = X_train[perm]
+    y_train = y_train[perm]
+    
+    print("-" * 60)
+    print(f"TOTAL COMBINED:")
+    print(f"  Train: {X_train.shape} ({len(X_train):,} samples)")
+    print(f"  Test:  {X_test.shape} ({len(X_test):,} samples)")
+    print("=" * 60)
+    
+    return X_train, y_train, X_test, y_test

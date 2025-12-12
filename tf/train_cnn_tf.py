@@ -25,7 +25,11 @@ from sklearn.metrics import classification_report, confusion_matrix  # Đánh gi
 
 # Import hàm load dataset từ file khác
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from dataset_main import load_dataset_from_folder
+from dataset_main import load_dataset_from_folder, load_all_datasets
+
+# Đường dẫn đến thư mục gốc
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+MODELS_DIR = os.path.join(ROOT_DIR, "models")
 
 
 # ============= BƯỚC 1: XÂY DỰNG MODEL CNN =============
@@ -122,7 +126,7 @@ def evaluate_model(model, X_test, y_test):
 # ============= CHƯƠNG TRÌNH CHÍNH =============
 def main():
     # --- Đọc tham số từ command line ---
-    dataset = sys.argv[1] if len(sys.argv) > 1 else "dataset-main"
+    dataset = sys.argv[1] if len(sys.argv) > 1 else "all"  # Mặc định: train với tất cả
     epochs = int(sys.argv[2]) if len(sys.argv) > 2 else 10
     
     print("\n" + "="*60)
@@ -131,7 +135,14 @@ def main():
     
     # --- BƯỚC 1: Load dữ liệu ---
     print("\n[1/5] Đang load dữ liệu...")
-    X_train, y_train, X_test, y_test = load_dataset_from_folder(dataset)
+    
+    # Chuyển về thư mục gốc để load dataset
+    os.chdir(ROOT_DIR)
+    
+    if dataset == "all":
+        X_train, y_train, X_test, y_test = load_all_datasets()
+    else:
+        X_train, y_train, X_test, y_test = load_dataset_from_folder(dataset)
     
     # Thêm chiều channel: (N, 28, 28) → (N, 28, 28, 1)
     X_train = X_train.reshape(-1, 28, 28, 1)
@@ -187,9 +198,10 @@ def main():
     evaluate_model(model, X_test, y_test)
     
     # Lưu model
-    os.makedirs("models", exist_ok=True)
-    model.save("models/cnn_digit_tf.keras")
-    print(f"\n✓ Đã lưu model: models/cnn_digit_tf.keras")
+    os.makedirs(MODELS_DIR, exist_ok=True)
+    model_path = os.path.join(MODELS_DIR, "cnn_digit_tf.keras")
+    model.save(model_path)
+    print(f"\n✓ Đã lưu model: {model_path}")
     print("="*60)
 
 
