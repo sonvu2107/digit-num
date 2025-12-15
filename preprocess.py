@@ -1,17 +1,17 @@
 """
-preprocess.py - Tiền xử lý ảnh từ GUI về format 28x28 chuẩn MNIST
+preprocess.py - Tiền xử lý ảnh từ GUI về format 28x28
 
 Pipeline xử lý:
     1. BGR -> Grayscale -> Blur nhẹ
-    2. Threshold Otsu: tách chữ trắng trên nền đen
+    2. Threshold Otsu: giữ chữ trắng trên nền đen (input từ GUI đã đúng MNIST)
     3. Tìm contour lớn nhất -> crop vùng chữ
     4. Deskew: chỉnh nghiêng dựa trên moment
     5. Resize giữ tỉ lệ về RESIZE_TARGET pixel
     6. Căn giữa vào canvas 28x28
     7. Chuẩn hoá [0,1]
 
-Input:  ảnh BGR từ GUI (280x280), nền ĐEN, chữ TRẮNG
-Output: numpy (28,28) float32 [0,1], nền ĐEN (~0), chữ TRẮNG (~1) - giống MNIST
+Input:  ảnh BGR từ GUI (280x280), nền ĐEN, chữ TRẮNG (đúng MNIST format)
+Output: numpy (28,28) float32 [0,1], nền ĐEN (~0), chữ TRẮNG (~1) - chuẩn MNIST
 """
 
 import cv2
@@ -54,13 +54,13 @@ def deskew(img):
 
 
 def preprocess_digit_from_bgr(img_bgr):
-    """Tiền xử lý ảnh BGR từ GUI về format 28x28 chuẩn.
+    """Tiền xử lý ảnh BGR từ GUI về format 28x28 chuẩn MNIST.
     
     Args:
-        img_bgr: ảnh BGR từ GUI (thường 280x280), nền TRẮNG, chữ ĐEN
+        img_bgr: ảnh BGR từ GUI (thường 280x280), nền ĐEN, chữ TRẮNG
     
     Returns:
-        numpy (28,28) float32 [0,1], chữ đen nền trắng
+        numpy (28,28) float32 [0,1], nền đen (~0), chữ trắng (~1) - chuẩn MNIST
         None nếu không tìm thấy chữ
     """
     # 1. BGR -> Grayscale + Blur
@@ -68,11 +68,11 @@ def preprocess_digit_from_bgr(img_bgr):
     gray = cv2.GaussianBlur(gray, BLUR_KERNEL, 0)
 
     # 2. Threshold Otsu: tự động chọn ngưỡng tối ưu
-    # THRESH_BINARY_INV: chữ đen -> trắng (để tìm contour)
+    # THRESH_BINARY (không INV): giữ nguyên chữ trắng trên nền đen (đúng MNIST)
     _, th = cv2.threshold(gray, 0, 255,
-                          cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+                          cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
-    # 3. Tìm contour chữ (chữ trắng trên nền đen sau invert)
+    # 3. Tìm contour chữ (chữ trắng trên nền đen)
     contours, _ = cv2.findContours(th, cv2.RETR_EXTERNAL,
                                    cv2.CHAIN_APPROX_SIMPLE)
     if not contours:
@@ -88,8 +88,8 @@ def preprocess_digit_from_bgr(img_bgr):
     # Crop vùng chữ
     digit = th[y:y+h, x:x+w]
 
-    # 4. Deskew
-    digit = deskew(digit)
+    # 4. Deskew - TẠM TẮT vì gây lỗi với một số chữ số
+    # digit = deskew(digit)
 
     # 5. Resize giữ tỉ lệ
     h, w = digit.shape
@@ -106,12 +106,12 @@ def preprocess_digit_from_bgr(img_bgr):
     # Threshold lại để đảm bảo nhị phân sau resize
     _, digit_resized = cv2.threshold(digit_resized, 127, 255, cv2.THRESH_BINARY)
 
-    # 6. Căn giữa vào canvas 28x28 (nền đen, chữ trắng - giống MNIST)
+    # 6. Căn giữa vào canvas 28x28 (nền đen, chữ trắng)
     canvas = np.zeros((28, 28), dtype=np.uint8)  # Nền đen
     x_off = (28 - new_w) // 2
     y_off = (28 - new_h) // 2
     
-    # Đặt chữ trắng vào canvas (giữ nguyên, không đảo màu)
+    # Giữ nguyên: chữ trắng trên nền đen
     canvas[y_off:y_off+new_h, x_off:x_off+new_w] = digit_resized
 
     # 7. Chuẩn hoá [0,1]

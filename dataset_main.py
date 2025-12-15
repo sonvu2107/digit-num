@@ -26,10 +26,11 @@ import os
 
 
 # Mapping tên folder cho các dataset khác nhau
-# invert: True nếu ảnh gốc là nền đen chữ trắng (cần đảo để thành nền trắng chữ đen)
+# invert: True nếu ảnh gốc là nền TRẮNG chữ ĐEN (cần đảo để thành nền đen chữ trắng)
+# Training format: NỀN ĐEN, CHỮ TRẮNG (giống MNIST gốc)
 DATASET_CONFIG = {
-    "dataset-main": {"train": "train", "test": "test", "invert": False},
-    "mnist_png": {"train": "training", "test": "testing", "invert": True},
+    "dataset-main": {"train": "train", "test": "test", "invert": True},   # nền trắng → đảo
+    "mnist_png": {"train": "training", "test": "testing", "invert": False},  # đã nền đen
 }
 
 # Thư mục chứa mẫu tự vẽ
@@ -38,6 +39,8 @@ EXTRA_DATASET_DIR = "dataset_extra"
 
 def load_extra_samples():
     """Load thêm mẫu từ dataset_extra/ (mẫu tự vẽ từ GUI).
+    
+    Lưu ý: dataset_extra hiện là nền trắng chữ đen → cần đảo màu
     
     Returns:
         X_extra, y_extra: ảnh và nhãn từ dataset_extra, hoặc (None, None) nếu không có
@@ -61,6 +64,8 @@ def load_extra_samples():
             if img is None:
                 continue
             img = cv2.resize(img, (28, 28))
+            # Đảo màu: nền trắng chữ đen → nền đen chữ trắng
+            img = 255 - img
             imgs.append(img)
             labels.append(digit)
     
