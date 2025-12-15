@@ -1,5 +1,5 @@
 """
-preprocess.py - Tiền xử lý ảnh từ GUI về format 28x28 chuẩn
+preprocess.py - Tiền xử lý ảnh từ GUI về format 28x28 chuẩn MNIST
 
 Pipeline xử lý:
     1. BGR -> Grayscale -> Blur nhẹ
@@ -7,11 +7,11 @@ Pipeline xử lý:
     3. Tìm contour lớn nhất -> crop vùng chữ
     4. Deskew: chỉnh nghiêng dựa trên moment
     5. Resize giữ tỉ lệ về RESIZE_TARGET pixel
-    6. Căn giữa vào canvas 28x28, đảo màu (chữ đen, nền trắng)
+    6. Căn giữa vào canvas 28x28
     7. Chuẩn hoá [0,1]
 
 Input:  ảnh BGR từ GUI (280x280), nền ĐEN, chữ TRẮNG
-Output: numpy (28,28) float32 [0,1], chữ ĐEN (~0), nền TRẮNG (~1)
+Output: numpy (28,28) float32 [0,1], nền ĐEN (~0), chữ TRẮNG (~1) - giống MNIST
 """
 
 import cv2
@@ -106,14 +106,13 @@ def preprocess_digit_from_bgr(img_bgr):
     # Threshold lại để đảm bảo nhị phân sau resize
     _, digit_resized = cv2.threshold(digit_resized, 127, 255, cv2.THRESH_BINARY)
 
-    # 6. Căn giữa vào canvas 28x28
-    canvas = np.full((28, 28), 255, dtype=np.uint8)  # Nền trắng
+    # 6. Căn giữa vào canvas 28x28 (nền đen, chữ trắng - giống MNIST)
+    canvas = np.zeros((28, 28), dtype=np.uint8)  # Nền đen
     x_off = (28 - new_w) // 2
     y_off = (28 - new_h) // 2
     
-    # Đặt chữ (đen = 0) vào canvas (không cần đảo màu nữa vì đã dùng BINARY_INV)
-    digit_final = 255 - digit_resized  # trắng(255) -> đen(0)
-    canvas[y_off:y_off+new_h, x_off:x_off+new_w] = digit_final
+    # Đặt chữ trắng vào canvas (giữ nguyên, không đảo màu)
+    canvas[y_off:y_off+new_h, x_off:x_off+new_w] = digit_resized
 
     # 7. Chuẩn hoá [0,1]
     return canvas.astype("float32") / 255.0

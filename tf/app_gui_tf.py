@@ -43,15 +43,15 @@ class DigitApp:
         # Slider độ dày nét
         self.line_width = tk.IntVar(value=DEFAULT_LINE_WIDTH)
 
-        # Canvas nền trắng
+        # Canvas nền đen (giống MNIST)
         self.canvas = tk.Canvas(
             root, width=CANVAS_SIZE, height=CANVAS_SIZE,
-            bg="white", cursor="cross"
+            bg="black", cursor="cross"
         )
         self.canvas.grid(row=0, column=0, rowspan=6, padx=10, pady=10)
 
-        # Ảnh PIL nền trắng
-        self.image = Image.new("RGB", (CANVAS_SIZE, CANVAS_SIZE), "white")
+        # Ảnh PIL nền đen (giống MNIST)
+        self.image = Image.new("RGB", (CANVAS_SIZE, CANVAS_SIZE), "black")
         self.draw = ImageDraw.Draw(self.image)
 
         # Events
@@ -109,18 +109,18 @@ class DigitApp:
             # Vẽ lên canvas
             self.canvas.create_line(
                 self.last_x, self.last_y, event.x, event.y,
-                width=w, fill="black", capstyle=tk.ROUND, smooth=True
+                width=w, fill="white", capstyle=tk.ROUND, smooth=True
             )
             # Vẽ lên ảnh PIL
             self.draw.line(
                 [self.last_x, self.last_y, event.x, event.y],
-                fill="black", width=w
+                fill="white", width=w
             )
         self.last_x, self.last_y = event.x, event.y
 
     def clear_canvas(self):
         self.canvas.delete("all")
-        self.image = Image.new("RGB", (CANVAS_SIZE, CANVAS_SIZE), "white")
+        self.image = Image.new("RGB", (CANVAS_SIZE, CANVAS_SIZE), "black")
         self.draw = ImageDraw.Draw(self.image)
         self.label_result.config(text="Kết quả: ...")
         self.last_x = self.last_y = None
