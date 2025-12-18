@@ -36,3 +36,20 @@ def predict_with_cnn_tf(img_bgr):
     x = digit.reshape(1, 28, 28, 1)
     probs = _model.predict(x, verbose=0)[0]
     return int(np.argmax(probs)), probs
+
+
+def predict_with_cnn_tf_from_array(digit_array):
+    """Dự đoán chữ số từ array 28x28 đã preprocess.
+    
+    Args:
+        digit_array: numpy (28,28) float32 [0,1] - đã preprocess sẵn
+    
+    Returns:
+        (pred, probs) hoặc (None, None)
+    """
+    if _model is None:
+        return None, None
+    
+    x = digit_array.reshape(1, 28, 28, 1)
+    probs = _model.predict(x, verbose=0)[0]
+    return int(np.argmax(probs)), probs

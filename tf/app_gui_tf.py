@@ -7,7 +7,7 @@ Version:
 """
 
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import messagebox, filedialog
 import numpy as np
 from PIL import Image, ImageDraw
 import cv2
@@ -89,6 +89,10 @@ class DigitApp:
         # Nút Lưu mẫu
         tk.Button(root, text="Lưu mẫu", command=self.save_sample)\
             .grid(row=6, column=1, sticky="ew", padx=10, pady=5)
+
+        # Nút Mở ảnh từ máy
+        tk.Button(root, text="Mở ảnh", command=self.open_image, bg="#4CAF50", fg="white")\
+            .grid(row=7, column=1, sticky="ew", padx=10, pady=5)
 
         # Label kết quả
         self.label_result = tk.Label(
@@ -192,6 +196,73 @@ class DigitApp:
 
         cv2.imwrite(save_path, img_28)
         messagebox.showinfo("Đã lưu", f"Đã lưu mẫu vào:\n{save_path}")
+
+    # ==== Mở ảnh từ máy ====
+    def open_image(self):
+        """Mở ảnh từ máy tính, hiển thị lên canvas và nhận diện."""
+        filepath = filedialog.askopenfilename(
+            title="Chọn ảnh chữ số",
+            filetypes=[
+                ("Ảnh", "*.png *.jpg *.jpeg *.bmp *.gif"),
+                ("Tất cả", "*.*")
+            ]
+        )
+        if not filepath:
+            return
+
+        # Đọc ảnh từ file
+        img_bgr = cv2.imread(filepath)
+        if img_bgr is None:
+            messagebox.showerror("Lỗi", f"Không thể đọc ảnh:\n{filepath}")
+            return
+
+        # Resize về CANVAS_SIZE để hiển thị
+        img_resized = cv2.resize(img_bgr, (CANVAS_SIZE, CANVAS_SIZE))
+        img_rgb = cv2.cvtColor(img_resized, cv2.COLOR_BGR2RGB)
+
+        # Cập nhật canvas và ảnh PIL
+        self.image = Image.fromarray(img_rgb)
+        self.draw = ImageDraw.Draw(self.image)
+
+        # Hiển thị lên canvas
+        self.canvas.delete("all")
+        from PIL import ImageTk
+        self.photo = ImageTk.PhotoImage(self.image)
+        self.canvas.create_image(0, 0, anchor=tk.NW, image=self.photo)
+
+        # Tự động nhận diện với auto_invert=True (cho ảnh giấy)
+        self.label_result.config(text="Đang xử lý ảnh...")
+        self.root.update()
+        
+        # Preprocess với auto_invert để xử lý ảnh giấy trắng chữ đen
+        digit = preprocess_digit_from_bgr(img_resized, auto_invert=True)
+        if digit is None:
+            messagebox.showwarning("Cảnh báo", "Không nhận diện được chữ số trong ảnh.")
+            self.label_result.config(text="Kết quả: ...")
+            return
+
+        # Lưu debug ảnh preprocess
+        dbg = (digit * 255).astype("uint8")
+        debug_path = os.path.join(DEBUG_IMAGES_DIR, "debug_preprocess_upload.png")
+        cv2.imwrite(debug_path, dbg)
+
+        # Predict
+        try:
+            from infer_tf import predict_with_cnn_tf_from_array
+            pred, probs = predict_with_cnn_tf_from_array(digit)
+        except ImportError:
+            # Fallback: dùng predict_with_cnn_tf với ảnh gốc
+            pred, probs = predict_with_cnn_tf(img_resized)
+        except Exception as e:
+            messagebox.showerror("Lỗi", f"Lỗi nhận diện: {e}")
+            return
+
+        if pred is None or probs is None:
+            self.label_result.config(text="Kết quả: ...")
+            return
+
+        conf = float(probs[pred]) * 100.0
+        self.label_result.config(text=f"Kết quả: {pred} ({conf:.1f}%)")
 
 
 if __name__ == "__main__":

@@ -53,11 +53,12 @@ def deskew(img):
                           flags=cv2.WARP_INVERSE_MAP | cv2.INTER_LINEAR)
 
 
-def preprocess_digit_from_bgr(img_bgr):
+def preprocess_digit_from_bgr(img_bgr, auto_invert=False):
     """Tiền xử lý ảnh BGR từ GUI về format 28x28 chuẩn MNIST.
     
     Args:
         img_bgr: ảnh BGR từ GUI (thường 280x280), nền ĐEN, chữ TRẮNG
+        auto_invert: Nếu True, tự động phát hiện và đảo màu nếu nền sáng (ảnh giấy)
     
     Returns:
         numpy (28,28) float32 [0,1], nền đen (~0), chữ trắng (~1) - chuẩn MNIST
@@ -67,10 +68,34 @@ def preprocess_digit_from_bgr(img_bgr):
     gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
     gray = cv2.GaussianBlur(gray, BLUR_KERNEL, 0)
 
-    # 2. Threshold Otsu: tự động chọn ngưỡng tối ưu
-    # THRESH_BINARY (không INV): giữ nguyên chữ trắng trên nền đen (đúng MNIST)
-    _, th = cv2.threshold(gray, 0, 255,
-                          cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    # Auto-invert: phát hiện nền sáng (ảnh giấy trắng chữ đen)
+    is_light_background = False
+    if auto_invert:
+        # Tính trung bình độ sáng, nếu > 127 thì nền sáng
+        mean_brightness = np.mean(gray)
+        is_light_background = mean_brightness > 127
+        print(f"[preprocess] Mean brightness: {mean_brightness:.1f}, is_light_background: {is_light_background}")
+
+    # 2. Threshold - chọn phương pháp phù hợp
+    if auto_invert:
+        # Adaptive Threshold: xử lý tốt ảnh có ánh sáng không đều (bóng, gradient)
+        # ADAPTIVE_THRESH_GAUSSIAN_C: dùng weighted sum của vùng lân cận
+        # Block size = 21: kích thước vùng lân cận (phải lẻ)
+        # C = 10: hằng số trừ đi (điều chỉnh độ nhạy)
+        th = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                   cv2.THRESH_BINARY_INV if is_light_background else cv2.THRESH_BINARY,
+                                   21, 10)
+        
+        # Làm dày nét vẽ (dilation) - nét trên giấy thường mảnh hơn MNIST
+        kernel = np.ones((3, 3), np.uint8)
+        th = cv2.dilate(th, kernel, iterations=2)
+    else:
+        # Otsu threshold: cho ảnh vẽ từ GUI (ánh sáng đều)
+        _, th = cv2.threshold(gray, 0, 255,
+                              cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        
+    # Debug: Hiển thị ảnh sau threshold
+    cv2.imshow("Debug: After Threshold", cv2.resize(th, (280, 280), interpolation=cv2.INTER_NEAREST))
 
     # 3. Tìm contour chữ (chữ trắng trên nền đen)
     contours, _ = cv2.findContours(th, cv2.RETR_EXTERNAL,
@@ -78,12 +103,44 @@ def preprocess_digit_from_bgr(img_bgr):
     if not contours:
         return None
 
-    # Lấy contour lớn nhất (giả sử là chữ số)
-    cnt = max(contours, key=cv2.contourArea)
-    x, y, w, h = cv2.boundingRect(cnt)
+    img_h, img_w = th.shape
+    margin = 10  # pixels từ viền (tăng lên để filter tốt hơn)
+    
+    # Lọc contour: loại bỏ những contour chạm viền ảnh (thường là khung bao)
+    valid_contours = []
+    for cnt in contours:
+        x, y, w, h = cv2.boundingRect(cnt)
+        area = cv2.contourArea(cnt)
+        
+        # Bỏ qua contour quá nhỏ
+        if w < 8 or h < 8 or area < 50:
+            continue
+        
+        # Bỏ qua contour chạm viền ảnh (thường là khung vẽ bao quanh)
+        touches_edge = (x <= margin or y <= margin or 
+                        x + w >= img_w - margin or y + h >= img_h - margin)
+        
+        # Bỏ qua contour chiếm gần hết ảnh (khung bao)
+        area_ratio = (w * h) / (img_w * img_h)
+        is_too_large = area_ratio > 0.7
+        
+        if not touches_edge and not is_too_large:
+            valid_contours.append(cnt)
+    
+    # Nếu có valid contours, GỘP TẤT CẢ thành 1 bounding box
+    if valid_contours:
+        # Gộp tất cả points từ các contour hợp lệ
+        all_points = np.vstack(valid_contours)
+        x, y, w, h = cv2.boundingRect(all_points)
+    else:
+        # Fallback: lấy contour lớn nhất
+        cnt = max(contours, key=cv2.contourArea)
+        x, y, w, h = cv2.boundingRect(cnt)
     
     if w < 5 or h < 5:
         return None
+    
+    print(f"[preprocess] Combined bounding box: x={x}, y={y}, w={w}, h={h}, valid_contours={len(valid_contours)}")
     
     # Crop vùng chữ
     digit = th[y:y+h, x:x+w]
@@ -105,6 +162,15 @@ def preprocess_digit_from_bgr(img_bgr):
     
     # Threshold lại để đảm bảo nhị phân sau resize
     _, digit_resized = cv2.threshold(digit_resized, 127, 255, cv2.THRESH_BINARY)
+
+    # Debug: Hiển thị ảnh resize (INTER_NEAREST - pixel rõ nét)
+    debug_img = cv2.resize(digit_resized, (280, 280), interpolation=cv2.INTER_NEAREST)
+    cv2.imshow("Debug: Resized (Nearest)", debug_img)
+    
+    # Debug: Hiển thị ảnh resize với nội suy (INTER_LINEAR - mượt hơn)
+    debug_img_interp = cv2.resize(digit_resized, (280, 280), interpolation=cv2.INTER_LINEAR)
+    cv2.imshow("Debug: Resized (Interpolated)", debug_img_interp)
+    cv2.waitKey(1)  # Cho phép cửa sổ cập nhật (không block)
 
     # 6. Căn giữa vào canvas 28x28 (nền đen, chữ trắng)
     canvas = np.zeros((28, 28), dtype=np.uint8)  # Nền đen
