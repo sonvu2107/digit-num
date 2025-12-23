@@ -44,19 +44,9 @@ digit-num/
 │   ├── train_cnn_tf.py        # Train CNN chữ số
 │   └── train_cnn_extended.py  # Train CNN mở rộng
 │
-├── pytorch/                   # PyTorch implementation (Tham khảo)
-│   ├── app_gui.py
-│   ├── infer.py
-│   ├── train_cnn.py
-│   ├── train_mlp.py
-│   └── train_svm.py
-│
 ├── models/                    # Chứa model đã train
 │   ├── cnn_digit_tf.keras     # Model chữ số (TensorFlow)
 │   ├── cnn_digit_letter_tf.keras  # Model mở rộng (TensorFlow)
-│   ├── cnn_digit.pth          # Model chữ số (PyTorch)
-│   ├── mlp_digit.joblib       # Model MLP
-│   └── svm_hog.joblib         # Model SVM
 │
 ├── dataset_extra/             # Mẫu tự vẽ từ GUI (0-9 + A, B, C)
 ├── mnist_png/                 # Dataset MNIST (60k train, 10k test)
@@ -235,7 +225,7 @@ python pytorch/train_mlp.py [dataset] [epochs]
 python pytorch/train_svm.py [dataset]
 ```
 
-## 🔬 Thuật toán & Kiến trúc
+##  Thuật toán & Kiến trúc
 
 ### 1. Tiền xử lý (Preprocessing)
 
