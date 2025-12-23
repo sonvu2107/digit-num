@@ -93,9 +93,6 @@ def preprocess_digit_from_bgr(img_bgr, auto_invert=False):
         # Otsu threshold: cho ảnh vẽ từ GUI (ánh sáng đều)
         _, th = cv2.threshold(gray, 0, 255,
                               cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-        
-    # Debug: Hiển thị ảnh sau threshold
-    cv2.imshow("Debug: After Threshold", cv2.resize(th, (280, 280), interpolation=cv2.INTER_NEAREST))
 
     # 3. Tìm contour chữ (chữ trắng trên nền đen)
     contours, _ = cv2.findContours(th, cv2.RETR_EXTERNAL,
@@ -162,15 +159,6 @@ def preprocess_digit_from_bgr(img_bgr, auto_invert=False):
     
     # Threshold lại để đảm bảo nhị phân sau resize
     _, digit_resized = cv2.threshold(digit_resized, 127, 255, cv2.THRESH_BINARY)
-
-    # Debug: Hiển thị ảnh resize (INTER_NEAREST - pixel rõ nét)
-    debug_img = cv2.resize(digit_resized, (280, 280), interpolation=cv2.INTER_NEAREST)
-    cv2.imshow("Debug: Resized (Nearest)", debug_img)
-    
-    # Debug: Hiển thị ảnh resize với nội suy (INTER_LINEAR - mượt hơn)
-    debug_img_interp = cv2.resize(digit_resized, (280, 280), interpolation=cv2.INTER_LINEAR)
-    cv2.imshow("Debug: Resized (Interpolated)", debug_img_interp)
-    cv2.waitKey(1)  # Cho phép cửa sổ cập nhật (không block)
 
     # 6. Căn giữa vào canvas 28x28 (nền đen, chữ trắng)
     canvas = np.zeros((28, 28), dtype=np.uint8)  # Nền đen

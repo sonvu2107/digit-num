@@ -2,20 +2,41 @@
 dataset-main/
 mnist_png/
 dataset_extra/
+dataset_letters/
 
 # PyTorch (chỉ dùng TensorFlow)
 pytorch/
 
-# Zip files
+# Archive files
 *.zip
+*.rar
+*.7z
+*.tar
+*.gz
+
+# CSV files
+*.csv
+
+# Test files
+test_*.py
+*_test.py
+test_*.png
+
+# Convert files
+convert_*.py
 
 # Debug images
 debug_images/
+debug_*.png
+test_*.png
+preview_*.png
 
 # Large model files
 models/svm_hog.joblib
 models/*.keras
 models/*.h5
+models/*.pth
+models/*.joblib
 
 # Python
 __pycache__/
@@ -27,14 +48,34 @@ __pycache__/
 .eggs/
 dist/
 build/
+*.pyc
+*.pyo
+*.pyd
 
 # Virtual environments
 venv/
 env/
+.venv/
 .env
+ENV/
 
 # IDE
 .vscode/
 .idea/
 *.swp
 *.swo
+*.sublime-project
+*.sublime-workspace
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+*.ipynb
+
+# Logs
+*.log
+logs/

@@ -1,6 +1,7 @@
 """
-app_gui_tf.py - GUI vẽ và nhận diện chữ số (TensorFlow)
-Version: 
+app_gui_tf.py - GUI vẽ và nhận diện chữ số + chữ cái (TensorFlow)
+Version:
+ - Hỗ trợ 13 classes: 0-9 + A, B, C
  - Slider chỉnh độ dày nét
  - Lưu debug ảnh preprocess
  - Nút "Lưu mẫu" vào dataset_extra để train tiếp
@@ -18,7 +19,7 @@ import time
 # Thêm thư mục cha vào path để import
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from infer_tf import predict_with_cnn_tf
+from infer_tf_extended import predict_extended, predict_extended_from_array, LABEL_NAMES
 from preprocess import preprocess_digit_from_bgr
 
 CANVAS_SIZE = 280
@@ -31,14 +32,14 @@ DEBUG_IMAGES_DIR = os.path.join(ROOT_DIR, "debug_images")
 
 # Đảm bảo các thư mục tồn tại
 os.makedirs(DEBUG_IMAGES_DIR, exist_ok=True)
-for d in range(10):
-    os.makedirs(os.path.join(DATASET_SAVE_DIR, str(d)), exist_ok=True)
+for label in LABEL_NAMES:  # 0-9 + A, B, C
+    os.makedirs(os.path.join(DATASET_SAVE_DIR, label), exist_ok=True)
 
 
 class DigitApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Nhận diện chữ số - CNN (TensorFlow)")
+        self.root.title("Nhận diện chữ số & chữ cái - CNN (TensorFlow)")
 
         # Slider độ dày nét
         self.line_width = tk.IntVar(value=DEFAULT_LINE_WIDTH)
@@ -75,16 +76,14 @@ class DigitApp:
             variable=self.line_width, showvalue=True, length=160
         ).grid(row=3, column=1, sticky="ew", padx=10, pady=5)
 
-        # Chọn nhãn để lưu
-        tk.Label(root, text="Nhãn để lưu (0-9):")\
+        # Chọn nhãn để lưu (0-9 + A, B, C)
+        tk.Label(root, text="Nhãn (0-9, A-C):")\
             .grid(row=4, column=1, sticky="w", padx=10, pady=(10, 0))
 
         self.label_var = tk.StringVar(value="0")
-        self.label_spin = tk.Spinbox(
-            root, from_=0, to=9, textvariable=self.label_var,
-            width=5, justify="center"
-        )
-        self.label_spin.grid(row=5, column=1, sticky="w", padx=10, pady=5)
+        self.label_combo = tk.OptionMenu(root, self.label_var, *LABEL_NAMES)
+        self.label_combo.config(width=5)
+        self.label_combo.grid(row=5, column=1, sticky="w", padx=10, pady=5)
 
         # Nút Lưu mẫu
         tk.Button(root, text="Lưu mẫu", command=self.save_sample)\
@@ -150,9 +149,9 @@ class DigitApp:
         debug_path = os.path.join(DEBUG_IMAGES_DIR, "debug_preprocess.png")
         cv2.imwrite(debug_path, dbg)
 
-        # Gọi model predict (vẫn dùng ảnh gốc, vì infer_tf tự preprocess lại)
+        # Gọi model predict
         try:
-            pred, probs = predict_with_cnn_tf(img_bgr)
+            pred, probs = predict_extended(img_bgr)
         except Exception as e:
             messagebox.showerror("Lỗi", f"Lỗi: {e}")
             return
@@ -161,7 +160,7 @@ class DigitApp:
             self.label_result.config(text="Kết quả: ...")
             return
 
-        conf = float(probs[pred]) * 100.0
+        conf = float(max(probs)) * 100.0
         self.label_result.config(text=f"Kết quả: {pred} ({conf:.1f}%)")
 
     # ==== Lưu mẫu vào dataset_extra/<label>/... ====
@@ -169,25 +168,20 @@ class DigitApp:
         img_bgr = cv2.cvtColor(np.array(self.image), cv2.COLOR_RGB2BGR)
         digit = preprocess_digit_from_bgr(img_bgr)
         if digit is None:
-            messagebox.showwarning("Cảnh báo", "Không có chữ số để lưu (ảnh trống?).")
+            messagebox.showwarning("Cảnh báo", "Không có chữ để lưu (ảnh trống?).")
             return
 
-        # Lấy nhãn từ spinbox
-        try:
-            label = int(self.label_var.get())
-        except ValueError:
-            messagebox.showerror("Lỗi", "Nhãn phải là số từ 0 đến 9.")
-            return
-
-        if not (0 <= label <= 9):
-            messagebox.showerror("Lỗi", "Nhãn phải nằm trong khoảng 0-9.")
+        # Lấy nhãn từ dropdown
+        label = self.label_var.get()
+        if label not in LABEL_NAMES:
+            messagebox.showerror("Lỗi", f"Nhãn không hợp lệ: {label}")
             return
 
         # Chuyển digit (28x28 float [0,1]) -> uint8 để lưu PNG
         img_28 = (digit * 255).astype("uint8")
 
         # Đường dẫn thư mục theo nhãn
-        label_dir = os.path.join(DATASET_SAVE_DIR, str(label))
+        label_dir = os.path.join(DATASET_SAVE_DIR, label)
         os.makedirs(label_dir, exist_ok=True)
 
         # Tạo tên file duy nhất theo timestamp
@@ -201,7 +195,7 @@ class DigitApp:
     def open_image(self):
         """Mở ảnh từ máy tính, hiển thị lên canvas và nhận diện."""
         filepath = filedialog.askopenfilename(
-            title="Chọn ảnh chữ số",
+            title="Chọn ảnh chữ số/chữ cái",
             filetypes=[
                 ("Ảnh", "*.png *.jpg *.jpeg *.bmp *.gif"),
                 ("Tất cả", "*.*")
@@ -237,7 +231,7 @@ class DigitApp:
         # Preprocess với auto_invert để xử lý ảnh giấy trắng chữ đen
         digit = preprocess_digit_from_bgr(img_resized, auto_invert=True)
         if digit is None:
-            messagebox.showwarning("Cảnh báo", "Không nhận diện được chữ số trong ảnh.")
+            messagebox.showwarning("Cảnh báo", "Không nhận diện được trong ảnh.")
             self.label_result.config(text="Kết quả: ...")
             return
 
@@ -248,11 +242,7 @@ class DigitApp:
 
         # Predict
         try:
-            from infer_tf import predict_with_cnn_tf_from_array
-            pred, probs = predict_with_cnn_tf_from_array(digit)
-        except ImportError:
-            # Fallback: dùng predict_with_cnn_tf với ảnh gốc
-            pred, probs = predict_with_cnn_tf(img_resized)
+            pred, probs = predict_extended_from_array(digit)
         except Exception as e:
             messagebox.showerror("Lỗi", f"Lỗi nhận diện: {e}")
             return
@@ -261,7 +251,7 @@ class DigitApp:
             self.label_result.config(text="Kết quả: ...")
             return
 
-        conf = float(probs[pred]) * 100.0
+        conf = float(max(probs)) * 100.0
         self.label_result.config(text=f"Kết quả: {pred} ({conf:.1f}%)")
 
 
